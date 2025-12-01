@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, MessageSquare, X, MoreHorizontal, ChevronLeft } from 'lucide-react';
+import { Plus, MessageSquare, X, MoreHorizontal, ChevronLeft, Search } from 'lucide-react';
 import type { Conversation } from '../types/chat';
 
 interface SidebarProps {
@@ -40,6 +40,14 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredConversations = conversations.filter((conversation) => {
+    if (!searchQuery.trim()) return true;
+    const title = (conversation.title || 'New chat').toLowerCase();
+    const query = searchQuery.toLowerCase();
+    return title.includes(query);
+  });
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -96,12 +104,38 @@ export function Sidebar({
         </div>
       </div>
 
+      <div className="sidebar-search">
+        <div className="search-input-wrapper">
+          <Search className="search-icon" aria-hidden />
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search chats..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search conversations"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="search-clear"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          )}
+        </div>
+      </div>
+
       <nav className="sidebar-nav" aria-label="Recent conversations">
         {conversations.length === 0 ? (
           <p className="sidebar-empty">No conversations yet</p>
+        ) : filteredConversations.length === 0 ? (
+          <p className="sidebar-empty">No matching conversations</p>
         ) : (
           <ul className="conversation-list">
-            {conversations.map((conversation) => {
+            {filteredConversations.map((conversation) => {
               const isActive = conversation.id === activeConversationId;
               const fullTitle = conversation.title || 'New chat';
               const truncatedTitle = fullTitle.length > 20 ? `${fullTitle.slice(0, 20).trim()}…` : fullTitle;
