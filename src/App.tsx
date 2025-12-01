@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Moon, Sun, Menu, Bot, Plus } from 'lucide-react';
+import { MessageSquare, Moon, Sun, Menu, Bot, Plus, Search } from 'lucide-react';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { Sidebar } from './components/Sidebar';
@@ -90,6 +90,7 @@ function App() {
     if (typeof window === 'undefined') return true;
     return window.innerWidth >= 768;
   });
+  const [shouldFocusSearch, setShouldFocusSearch] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { conversations, activeConversationId } = conversationState;
@@ -320,6 +321,8 @@ function App() {
         onRenameConversation={handleRenameConversation}
         onDeleteConversation={handleDeleteConversation}
         onClose={() => setIsSidebarOpen(false)}
+        shouldFocusSearch={shouldFocusSearch}
+        onSearchFocused={() => setShouldFocusSearch(false)}
       />
 
       {/* Icon bar visible when sidebar is closed on desktop */}
@@ -335,12 +338,17 @@ function App() {
         </button>
         <button
           type="button"
-          onClick={() => setIsSidebarOpen(true)}
+          onClick={() => {
+            if (!isSidebarOpen) {
+              setIsSidebarOpen(true);
+            }
+            setShouldFocusSearch(true);
+          }}
           className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-control)] text-[var(--text-primary)] transition hover:bg-[var(--bg-control-hover)]"
-          title="Open sidebar"
-          aria-label="Open sidebar"
+          title="Search chats"
+          aria-label="Search chats"
         >
-          <MessageSquare className="h-5 w-5" aria-hidden />
+          <Search className="h-5 w-5" aria-hidden />
         </button>
       </div>
 

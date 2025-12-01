@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Plus, MessageSquare, X, MoreHorizontal, ChevronLeft, Search } from 'lucide-react';
 import type { Conversation } from '../types/chat';
 
@@ -11,6 +11,8 @@ interface SidebarProps {
   onRenameConversation: (conversationId: string) => void;
   onDeleteConversation: (conversationId: string) => void;
   onClose: () => void;
+  shouldFocusSearch?: boolean;
+  onSearchFocused?: () => void;
 }
 
 function formatRelativeTime(timestamp: number) {
@@ -38,9 +40,12 @@ export function Sidebar({
   onRenameConversation,
   onDeleteConversation,
   onClose,
+  shouldFocusSearch,
+  onSearchFocused,
 }: SidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const filteredConversations = conversations.filter((conversation) => {
     if (!searchQuery.trim()) return true;
@@ -68,6 +73,13 @@ export function Sidebar({
       setOpenMenuId(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (shouldFocusSearch && searchInputRef.current) {
+      searchInputRef.current.focus();
+      onSearchFocused?.();
+    }
+  }, [shouldFocusSearch, onSearchFocused]);
 
   return (
     <aside
@@ -108,6 +120,7 @@ export function Sidebar({
         <div className="search-input-wrapper">
           <Search className="search-icon" aria-hidden />
           <input
+            ref={searchInputRef}
             type="text"
             className="search-input"
             placeholder="Search chats..."
@@ -164,7 +177,7 @@ export function Sidebar({
                       }}
                       aria-label="Conversation actions"
                     >
-                      <MoreHorizontal className="h-4 w-4 z-100" aria-hidden />
+                      <MoreHorizontal className="h-4 w-4" aria-hidden />
                     </button>
                     {openMenuId === conversation.id ? (
                       <div className="conversation-menu">
