@@ -324,23 +324,23 @@ function App() {
 
       <div className="flex flex-1 flex-col">
         <header className="border-b border-[var(--border-strong)] bg-[var(--bg-panel)]/95 backdrop-blur-md transition-colors">
-          <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-4">
+          <div className="flex w-full items-center gap-3 px-4 py-4">
             <button
               type="button"
-              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-control)] text-[var(--text-primary)] transition hover:bg-[var(--bg-control-hover)] ${isSidebarOpen ? 'md:hidden' : 'md:inline-flex'}`}
+              className={`inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-control)] text-[var(--text-primary)] transition hover:bg-[var(--bg-control-hover)] ${isSidebarOpen ? 'md:hidden' : 'md:inline-flex'}`}
               onClick={() => setIsSidebarOpen(true)}
               aria-label="Open chat history"
             >
               <Menu className="h-5 w-5" aria-hidden />
             </button>
-            <div className="accent-badge hidden h-11 w-11 items-center justify-center rounded-full md:flex">
+            <div className="accent-badge hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-full md:flex">
               <MessageSquare className="h-5 w-5 text-[var(--accent)]" />
             </div>
-            <div>
+            <div className="flex-1">
               <h1 className="text-base font-semibold text-[var(--text-primary)]">ChatGPT Clone</h1>
               <p className="text-sm text-[var(--text-tertiary)]">Powered by Azure OpenAI</p>
             </div>
-            <div className="ml-auto">
+            <div className="flex-shrink-0">
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -361,7 +361,7 @@ function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto bg-[var(--bg-app)] transition-colors">
-          <div className="mx-auto w-full max-w-3xl px-4 py-8">
+          <div className="mx-auto w-full max-w-4xl px-4 py-8">
             {messages.length === 0 ? (
               <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-6 text-center text-[var(--text-tertiary)]">
                 <MessageSquare className="h-16 w-16 text-[var(--border-subtle)]" />
