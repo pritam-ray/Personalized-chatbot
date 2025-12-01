@@ -49,9 +49,19 @@ export function Sidebar({
 
   const filteredConversations = conversations.filter((conversation) => {
     if (!searchQuery.trim()) return true;
-    const title = (conversation.title || 'New chat').toLowerCase();
     const query = searchQuery.toLowerCase();
-    return title.includes(query);
+    
+    // Search in conversation title
+    const title = (conversation.title || 'New chat').toLowerCase();
+    if (title.includes(query)) return true;
+    
+    // Search in message content (both user and assistant messages)
+    const hasMatchingMessage = conversation.messages.some((message) => {
+      const content = (message.displayContent || message.content || '').toLowerCase();
+      return content.includes(query);
+    });
+    
+    return hasMatchingMessage;
   });
 
   useEffect(() => {
