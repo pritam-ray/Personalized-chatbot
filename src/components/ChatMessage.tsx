@@ -112,40 +112,37 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const label = isUser ? 'You' : isAssistant ? 'ChatGPT' : 'System';
   const displayContent = isUser ? message.displayContent || message.content : message.content;
 
+  const rowClass = `chat-row ${isUser ? 'chat-row-user' : 'chat-row-assistant'}`;
+  const avatarClass = `chat-avatar ${
+    isUser ? 'chat-avatar-user' : 'chat-avatar-assistant'
+  }`;
+  const cardClass = `chat-card ${
+    isUser ? 'chat-card-user' : isAssistant ? 'chat-card-assistant' : 'chat-card-system'
+  }`;
+
   return (
-    <article className="py-3">
-      <div
-        className={`chat-bubble flex gap-4 rounded-2xl border px-6 py-6 text-[var(--text-primary)] transition-colors ${
-          isUser
-            ? 'bg-[var(--bg-message-user)] border-[var(--border-subtle)]'
-            : 'bg-[var(--bg-message-assistant)] border-[var(--border-subtle)]'
-        }`}
-      >
-        <div
-          className={`flex h-10 w-10 flex-none items-center justify-center rounded-full text-white ${
-            isUser
-              ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
-              : 'bg-[var(--bg-control-hover)] text-[var(--text-primary)]'
-          }`}
-          aria-hidden
-        >
-          {isUser ? <User className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="mb-2 text-sm font-semibold text-[var(--text-secondary)]">{label}</p>
+    <article className={rowClass}>
+      <div className={avatarClass} aria-hidden>
+        {isUser ? <User className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
+      </div>
+      <div className={cardClass}>
+        <header className="chat-card-header">
+          <span className="chat-card-label">{label}</span>
+        </header>
+        <div className="chat-card-body">
           {isAssistant ? (
             <MarkdownContent content={displayContent} />
           ) : (
             <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--text-primary)]">{displayContent}</p>
           )}
-          {message.attachments?.length ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {message.attachments.map((attachment, index) => (
-                <AttachmentPreview key={`${attachment.fileName}-${index}`} attachment={attachment} />
-              ))}
-            </div>
-          ) : null}
         </div>
+        {message.attachments?.length ? (
+          <div className="chat-card-attachments">
+            {message.attachments.map((attachment, index) => (
+              <AttachmentPreview key={`${attachment.fileName}-${index}`} attachment={attachment} />
+            ))}
+          </div>
+        ) : null}
       </div>
     </article>
   );

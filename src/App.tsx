@@ -1,12 +1,76 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Moon, Sun } from 'lucide-react';
+import { MessageSquare, Moon, Sun, Menu, Bot } from 'lucide-react';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
+import { Sidebar } from './components/Sidebar';
 import { Attachment, Message, streamChatCompletion } from './services/azureOpenAI';
+import type { Conversation } from './types/chat';
 
 const THEME_STORAGE_KEY = 'chatgpt-clone-theme';
+const HISTORY_STORAGE_KEY = 'chatgpt-clone-history';
+const ACTIVE_CONVERSATION_KEY = 'chatgpt-clone-active-conversation';
+const DEFAULT_TITLE = 'New chat';
 
 type Theme = 'dark' | 'light';
+
+interface ConversationState {
+  conversations: Conversation[];
+  activeConversationId: string;
+}
+
+const createConversation = (): Conversation => {
+  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+  const timestamp = Date.now();
+
+  return {
+    id,
+    title: DEFAULT_TITLE,
+    messages: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+};
+
+const loadInitialConversationState = (): ConversationState => {
+  if (typeof window === 'undefined') {
+    const conversation = createConversation();
+    return { conversations: [conversation], activeConversationId: conversation.id };
+  }
+
+  try {
+    const stored = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Conversation[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const sorted = [...parsed].sort((a, b) => b.updatedAt - a.updatedAt);
+        const storedActiveId = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+        const fallbackId = sorted[0].id;
+        const activeConversationId = sorted.some((conversation) => conversation.id === storedActiveId)
+          ? (storedActiveId as string)
+          : fallbackId;
+        return { conversations: sorted, activeConversationId };
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load conversations from storage:', error);
+  }
+
+  const conversation = createConversation();
+  return { conversations: [conversation], activeConversationId: conversation.id };
+};
+
+const summarizeTitle = (conversation: Conversation, content: string) => {
+  if (conversation.title !== DEFAULT_TITLE) {
+    return conversation.title;
+  }
+
+  const cleaned = content.trim().replace(/\s+/g, ' ');
+  if (!cleaned) {
+    return DEFAULT_TITLE;
+  }
+
+  return cleaned.length > 40 ? `${cleaned.slice(0, 40).trim()}…` : cleaned;
+};
 
 function resolveInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
@@ -19,10 +83,18 @@ function resolveInitialTheme(): Theme {
 }
 
 function App() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationState, setConversationState] = useState<ConversationState>(() => loadInitialConversationState());
   const [isLoading, setIsLoading] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => resolveInitialTheme());
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth >= 768;
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const { conversations, activeConversationId } = conversationState;
+  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || conversations[0];
+  const messages = activeConversation?.messages ?? [];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -31,6 +103,12 @@ function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(conversations));
+    window.localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
+  }, [conversations, activeConversationId]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -45,12 +123,62 @@ function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  const updateConversationById = (
+    conversationId: string,
+    updater: (conversation: Conversation) => Conversation,
+  ) => {
+    setConversationState((prev) => {
+      const index = prev.conversations.findIndex((conversation) => conversation.id === conversationId);
+      if (index === -1) {
+        return prev;
+      }
+
+      const target = prev.conversations[index];
+      const updatedConversation = updater(target);
+      const remaining = prev.conversations.filter((_, idx) => idx !== index);
+
+      return {
+        ...prev,
+        conversations: [updatedConversation, ...remaining],
+      };
+    });
+  };
+
+  const handleSelectConversation = (conversationId: string) => {
+    setConversationState((prev) => {
+      if (!prev.conversations.some((conversation) => conversation.id === conversationId)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        activeConversationId: conversationId,
+      };
+    });
+    setIsSidebarOpen(false);
+  };
+
+  const handleNewConversation = () => {
+    const conversation = createConversation();
+    setConversationState((prev) => ({
+      conversations: [conversation, ...prev.conversations],
+      activeConversationId: conversation.id,
+    }));
+    setIsSidebarOpen(false);
+    setIsLoading(false);
+  };
+
   const handleSendMessage = async (
     content: string,
     displayContent?: string,
     _fileName?: string,
     attachments?: Attachment[],
   ) => {
+    if (!activeConversation) {
+      return;
+    }
+
+    const conversationId = activeConversation.id;
     const userMessage: Message = {
       role: 'user',
       content, // Full content for API
@@ -58,7 +186,16 @@ function App() {
       attachments,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const conversationMessages = activeConversation.messages;
+    const updatedMessages = [...conversationMessages, userMessage];
+
+    updateConversationById(conversationId, (conversation) => ({
+      ...conversation,
+      messages: updatedMessages,
+      title: summarizeTitle(conversation, userMessage.displayContent || userMessage.content),
+      updatedAt: Date.now(),
+    }));
+
     setIsLoading(true);
 
     try {
@@ -67,16 +204,30 @@ function App() {
         content: '',
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      updateConversationById(conversationId, (conversation) => ({
+        ...conversation,
+        messages: [...updatedMessages, assistantMessage],
+        updatedAt: Date.now(),
+      }));
 
-      const messageHistory = [...messages, userMessage];
+      const messageHistory = [...updatedMessages];
 
       for await (const chunk of streamChatCompletion(messageHistory)) {
         assistantMessage.content += chunk;
-        setMessages((prev) => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = { ...assistantMessage };
-          return newMessages;
+        const latestContent = assistantMessage.content;
+
+        updateConversationById(conversationId, (conversation) => {
+          const updated = [...conversation.messages];
+          const lastIndex = updated.length - 1;
+          if (lastIndex >= 0) {
+            updated[lastIndex] = { ...updated[lastIndex], content: latestContent };
+          }
+
+          return {
+            ...conversation,
+            messages: updated,
+            updatedAt: Date.now(),
+          };
         });
       }
     } catch (error) {
@@ -85,7 +236,20 @@ function App() {
         role: 'assistant',
         content: 'Sorry, I encountered an error processing your request. Please try again.',
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      updateConversationById(conversationId, (conversation) => {
+        const updated = [...conversation.messages];
+        if (updated.length && updated[updated.length - 1].role === 'assistant') {
+          updated[updated.length - 1] = errorMessage;
+        } else {
+          updated.push(errorMessage);
+        }
+
+        return {
+          ...conversation,
+          messages: updated,
+          updatedAt: Date.now(),
+        };
+      });
     } finally {
       setIsLoading(false);
     }
@@ -93,10 +257,33 @@ function App() {
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] transition-colors duration-300">
-      <div className="flex flex-col flex-1">
+      <div
+        className={`sidebar-overlay md:hidden ${isSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+        onClick={() => setIsSidebarOpen(false)}
+        aria-hidden="true"
+      />
+
+      <Sidebar
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        isOpen={isSidebarOpen}
+        onSelectConversation={handleSelectConversation}
+        onNewConversation={handleNewConversation}
+        onClose={() => setIsSidebarOpen(false)}
+      />
+
+      <div className="flex flex-1 flex-col">
         <header className="border-b border-[var(--border-strong)] bg-[var(--bg-panel)]/95 backdrop-blur-md transition-colors">
           <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-4">
-            <div className="accent-badge flex h-11 w-11 items-center justify-center rounded-full">
+            <button
+              type="button"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-control)] text-[var(--text-primary)] transition hover:bg-[var(--bg-control-hover)] md:hidden"
+              onClick={() => setIsSidebarOpen(true)}
+              aria-label="Open chat history"
+            >
+              <Menu className="h-5 w-5" aria-hidden />
+            </button>
+            <div className="accent-badge hidden h-11 w-11 items-center justify-center rounded-full md:flex">
               <MessageSquare className="h-5 w-5 text-[var(--accent)]" />
             </div>
             <div>
@@ -124,7 +311,7 @@ function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto bg-[var(--bg-app)] transition-colors">
-          <div className="mx-auto w-full max-w-3xl px-4">
+          <div className="mx-auto w-full max-w-3xl px-4 py-8">
             {messages.length === 0 ? (
               <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-6 text-center text-[var(--text-tertiary)]">
                 <MessageSquare className="h-16 w-16 text-[var(--border-subtle)]" />
@@ -136,21 +323,25 @@ function App() {
                 </div>
               </div>
             ) : (
-              <div className="pb-6">
+              <div className="space-y-4 pb-10">
                 {messages.map((message, index) => (
                   <ChatMessage key={index} message={message} />
                 ))}
                 {isLoading && messages[messages.length - 1]?.content === '' && (
-                  <div className="chat-bubble flex items-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-message-assistant)] px-6 py-6 text-[var(--text-primary)]">
-                    <div className="accent-badge flex h-10 w-10 flex-none items-center justify-center rounded-full">
-                      <MessageSquare className="h-5 w-5 text-[var(--accent)]" />
+                  <div className="chat-row chat-row-assistant">
+                    <div className="chat-avatar chat-avatar-assistant">
+                      <Bot className="h-5 w-5" aria-hidden />
                     </div>
-                    <div className="flex-1">
-                      <div className="mb-2 text-sm font-semibold text-[var(--text-primary)]">AI Assistant</div>
-                      <div className="flex gap-2">
-                        <span className="typing-dot"></span>
-                        <span className="typing-dot dot-2"></span>
-                        <span className="typing-dot dot-3"></span>
+                    <div className="chat-card chat-card-assistant">
+                      <header className="chat-card-header">
+                        <span className="chat-card-label">AI Assistant</span>
+                      </header>
+                      <div className="chat-card-body">
+                        <div className="flex gap-2">
+                          <span className="typing-dot"></span>
+                          <span className="typing-dot dot-2"></span>
+                          <span className="typing-dot dot-3"></span>
+                        </div>
                       </div>
                     </div>
                   </div>
