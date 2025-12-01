@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, MessageSquare, X, MoreHorizontal } from 'lucide-react';
+import { Plus, MessageSquare, X, MoreHorizontal, ChevronLeft } from 'lucide-react';
 import type { Conversation } from '../types/chat';
 
 interface SidebarProps {
@@ -65,6 +65,7 @@ export function Sidebar({
     <aside
       className={`sidebar ${isOpen ? 'sidebar-open' : 'sidebar-closed'} bg-[var(--bg-panel)] text-[var(--text-primary)]`}
       aria-label="Chat history"
+      aria-hidden={!isOpen}
     >
       <div className="sidebar-header">
         <button
@@ -75,14 +76,24 @@ export function Sidebar({
           <Plus className="h-4 w-4" aria-hidden />
           <span>New chat</span>
         </button>
-        <button
-          type="button"
-          className="sidebar-close md:hidden"
-          onClick={onClose}
-          aria-label="Close sidebar"
-        >
-          <X className="h-5 w-5" aria-hidden />
-        </button>
+        <div className="sidebar-header-actions">
+          <button
+            type="button"
+            className="sidebar-close hidden md:inline-flex"
+            onClick={onClose}
+            aria-label="Hide sidebar"
+          >
+            <ChevronLeft className="h-5 w-5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            className="sidebar-close md:hidden"
+            onClick={onClose}
+            aria-label="Close sidebar"
+          >
+            <X className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
       </div>
 
       <nav className="sidebar-nav" aria-label="Recent conversations">

@@ -327,7 +327,7 @@ function App() {
           <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-4">
             <button
               type="button"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-control)] text-[var(--text-primary)] transition hover:bg-[var(--bg-control-hover)] md:hidden"
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-control)] text-[var(--text-primary)] transition hover:bg-[var(--bg-control-hover)] ${isSidebarOpen ? 'md:hidden' : 'md:inline-flex'}`}
               onClick={() => setIsSidebarOpen(true)}
               aria-label="Open chat history"
             >
