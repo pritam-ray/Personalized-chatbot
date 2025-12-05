@@ -6,4 +6,5 @@ export interface Conversation {
   messages: Message[];
   createdAt: number;
   updatedAt: number;
+  azureSessionId?: string; // Azure Response API session ID for context management
 }

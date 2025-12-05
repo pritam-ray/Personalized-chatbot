@@ -1,0 +1,112 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+
+export interface Conversation {
+  id: string;
+  title: string;
+  azure_session_id?: string;
+  created_at: number;
+  updated_at: number;
+  messages: any[];
+}
+
+// Fetch all conversations from backend
+export async function fetchConversations(): Promise<Conversation[]> {
+  const response = await fetch(`${API_BASE_URL}/conversations`);
+  if (!response.ok) throw new Error('Failed to fetch conversations');
+  return response.json();
+}
+
+// Get single conversation
+export async function fetchConversation(id: string): Promise<Conversation> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${id}`);
+  if (!response.ok) throw new Error('Failed to fetch conversation');
+  return response.json();
+}
+
+// Create new conversation in backend
+export async function createConversation(
+  id: string, 
+  title: string, 
+  azureSessionId?: string
+): Promise<Conversation> {
+  const response = await fetch(`${API_BASE_URL}/conversations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, title, azureSessionId })
+  });
+  if (!response.ok) throw new Error('Failed to create conversation');
+  return response.json();
+}
+
+// Update conversation title
+export async function updateConversationTitle(id: string, title: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${id}/title`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title })
+  });
+  if (!response.ok) throw new Error('Failed to update conversation');
+}
+
+// Update conversation Azure session ID
+export async function updateConversationSession(id: string, azureSessionId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${id}/session`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ azureSessionId })
+  });
+  if (!response.ok) throw new Error('Failed to update session');
+}
+
+// Delete conversation
+export async function deleteConversation(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${id}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) throw new Error('Failed to delete conversation');
+}
+
+// Add message to conversation
+export async function addMessage(
+  conversationId: string,
+  role: string,
+  content: string,
+  displayContent?: string,
+  attachments?: any[]
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      role,
+      content,
+      displayContent: displayContent || content,
+      attachments: attachments || []
+    })
+  });
+  if (!response.ok) throw new Error('Failed to add message');
+}
+
+// Azure session management
+export async function saveAzureSession(
+  sessionId: string,
+  conversationId: string,
+  modelName?: string,
+  totalTokens?: number
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/azure-sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, conversationId, modelName, totalTokens })
+  });
+  if (!response.ok) throw new Error('Failed to save Azure session');
+}
+
+export async function getAzureSession(conversationId: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/session`);
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error('Failed to fetch Azure session');
+  }
+  return response.json();
+}

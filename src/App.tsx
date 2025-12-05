@@ -5,10 +5,11 @@ import { ChatInput } from './components/ChatInput';
 import { Sidebar } from './components/Sidebar';
 import { SearchModal } from './components/SearchModal';
 import { Attachment, Message, streamChatCompletion } from './services/azureOpenAI';
+import { azureResponseAPI } from './services/azureResponseAPI';
+import * as api from './services/api';
 import type { Conversation } from './types/chat';
 
 const THEME_STORAGE_KEY = 'chatgpt-clone-theme';
-const HISTORY_STORAGE_KEY = 'chatgpt-clone-history';
 const ACTIVE_CONVERSATION_KEY = 'chatgpt-clone-active-conversation';
 const DEFAULT_TITLE = 'New chat';
 
@@ -29,33 +30,12 @@ const createConversation = (): Conversation => {
     messages: [],
     createdAt: timestamp,
     updatedAt: timestamp,
+    azureSessionId: undefined,
   };
 };
 
 const loadInitialConversationState = (): ConversationState => {
-  if (typeof window === 'undefined') {
-    const conversation = createConversation();
-    return { conversations: [conversation], activeConversationId: conversation.id };
-  }
-
-  try {
-    const stored = window.localStorage.getItem(HISTORY_STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as Conversation[];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const sorted = [...parsed].sort((a, b) => b.updatedAt - a.updatedAt);
-        const storedActiveId = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
-        const fallbackId = sorted[0].id;
-        const activeConversationId = sorted.some((conversation) => conversation.id === storedActiveId)
-          ? (storedActiveId as string)
-          : fallbackId;
-        return { conversations: sorted, activeConversationId };
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load conversations from storage:', error);
-  }
-
+  // Initial empty state - will be loaded from database in useEffect
   const conversation = createConversation();
   return { conversations: [conversation], activeConversationId: conversation.id };
 };
@@ -107,11 +87,57 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
+  // Load conversations from database on mount
+  useEffect(() => {
+    const loadFromDatabase = async () => {
+      try {
+        const dbConversations = await api.fetchConversations();
+        
+        if (dbConversations.length > 0) {
+          // Map database fields to frontend structure
+          const mapped = dbConversations.map(conv => ({
+            id: conv.id,
+            title: conv.title,
+            messages: conv.messages || [],
+            createdAt: conv.created_at,
+            updatedAt: conv.updated_at,
+            azureSessionId: conv.azure_session_id,
+          }));
+          
+          const sorted = mapped.sort((a, b) => b.updatedAt - a.updatedAt);
+          const storedActiveId = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+          const activeId = sorted.some(c => c.id === storedActiveId) ? storedActiveId! : sorted[0].id;
+          
+          setConversationState({
+            conversations: sorted,
+            activeConversationId: activeId,
+          });
+        } else {
+          // No conversations in database, create initial one
+          const initialConv = createConversation();
+          try {
+            await api.createConversation(initialConv.id, initialConv.title);
+            setConversationState({
+              conversations: [initialConv],
+              activeConversationId: initialConv.id,
+            });
+          } catch (error) {
+            console.error('Failed to create initial conversation:', error);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load from database:', error);
+      }
+    };
+    
+    loadFromDatabase();
+  }, []);
+
+  // Save active conversation ID to localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(conversations));
     window.localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
-  }, [conversations, activeConversationId]);
+  }, [activeConversationId]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -147,7 +173,7 @@ function App() {
     });
   };
 
-  const handleRenameConversation = (conversationId: string) => {
+  const handleRenameConversation = async (conversationId: string) => {
     const target = conversations.find((conversation) => conversation.id === conversationId);
     if (!target) {
       return;
@@ -160,6 +186,14 @@ function App() {
     }
 
     const trimmed = nextTitle.trim() || DEFAULT_TITLE;
+    
+    // Update in database
+    try {
+      await api.updateConversationTitle(conversationId, trimmed);
+    } catch (error) {
+      console.error('Failed to update title in database:', error);
+    }
+    
     updateConversationById(conversationId, (conversation) => ({
       ...conversation,
       title: trimmed,
@@ -167,10 +201,17 @@ function App() {
     }));
   };
 
-  const handleDeleteConversation = (conversationId: string) => {
+  const handleDeleteConversation = async (conversationId: string) => {
     const confirmDelete = window.confirm('Delete this conversation?');
     if (!confirmDelete) {
       return;
+    }
+
+    // Delete from database
+    try {
+      await api.deleteConversation(conversationId);
+    } catch (error) {
+      console.error('Failed to delete from database:', error);
     }
 
     setConversationState((prev) => {
@@ -217,7 +258,7 @@ function App() {
     setIsSidebarOpen(false);
   };
 
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
     // Check if the current active conversation is already empty
     const currentActive = conversations.find((c) => c.id === activeConversationId);
     if (currentActive && currentActive.messages.length === 0) {
@@ -227,6 +268,16 @@ function App() {
     }
 
     const conversation = createConversation();
+    
+    // Create in database
+    try {
+      await api.createConversation(conversation.id, conversation.title);
+    } catch (error) {
+      console.error('Failed to create conversation in database:', error);
+      alert('Failed to create new conversation. Please try again.');
+      return;
+    }
+    
     setConversationState((prev) => ({
       conversations: [conversation, ...prev.conversations],
       activeConversationId: conversation.id,
@@ -255,11 +306,34 @@ function App() {
 
     const conversationMessages = activeConversation.messages;
     const updatedMessages = [...conversationMessages, userMessage];
+    const newTitle = summarizeTitle(activeConversation, userMessage.displayContent || userMessage.content);
+
+    // Update title in database if it's the first message
+    if (conversationMessages.length === 0 && newTitle !== DEFAULT_TITLE) {
+      try {
+        await api.updateConversationTitle(conversationId, newTitle);
+      } catch (error) {
+        console.error('Failed to update conversation title:', error);
+      }
+    }
+
+    // Save user message to database
+    try {
+      await api.addMessage(
+        conversationId,
+        'user',
+        content,
+        displayContent,
+        attachments
+      );
+    } catch (error) {
+      console.error('Failed to save user message:', error);
+    }
 
     updateConversationById(conversationId, (conversation) => ({
       ...conversation,
       messages: updatedMessages,
-      title: summarizeTitle(conversation, userMessage.displayContent || userMessage.content),
+      title: newTitle,
       updatedAt: Date.now(),
     }));
 
@@ -277,25 +351,83 @@ function App() {
         updatedAt: Date.now(),
       }));
 
-      const messageHistory = [...updatedMessages];
+      // Use Azure Response API with session management if no attachments
+      // This maintains context on Azure's side and reduces token costs
+      const useSessionAPI = azureResponseAPI.isConfigured() && !attachments?.length;
 
-      for await (const chunk of streamChatCompletion(messageHistory)) {
-        assistantMessage.content += chunk;
-        const latestContent = assistantMessage.content;
-
-        updateConversationById(conversationId, (conversation) => {
-          const updated = [...conversation.messages];
-          const lastIndex = updated.length - 1;
-          if (lastIndex >= 0) {
-            updated[lastIndex] = { ...updated[lastIndex], content: latestContent };
+      if (useSessionAPI) {
+        console.log('[App] Using Azure Response API with session management');
+        
+        let sessionId = activeConversation.azureSessionId;
+        
+        for await (const chunk of azureResponseAPI.streamWithSession(content, { sessionId })) {
+          if (chunk.done) {
+            // Store session ID for future messages
+            if (chunk.sessionId && chunk.sessionId !== sessionId) {
+              sessionId = chunk.sessionId;
+              try {
+                await api.updateConversationSession(conversationId, sessionId);
+                updateConversationById(conversationId, (conversation) => ({
+                  ...conversation,
+                  azureSessionId: sessionId,
+                }));
+              } catch (error) {
+                console.error('Failed to save session ID:', error);
+              }
+            }
+            break;
           }
 
-          return {
-            ...conversation,
-            messages: updated,
-            updatedAt: Date.now(),
-          };
-        });
+          assistantMessage.content += chunk.content;
+          const latestContent = assistantMessage.content;
+
+          updateConversationById(conversationId, (conversation) => {
+            const updated = [...conversation.messages];
+            const lastIndex = updated.length - 1;
+            if (lastIndex >= 0) {
+              updated[lastIndex] = { ...updated[lastIndex], content: latestContent };
+            }
+
+            return {
+              ...conversation,
+              messages: updated,
+              updatedAt: Date.now(),
+            };
+          });
+        }
+      } else {
+        console.log('[App] Using standard Azure OpenAI (with attachments or session API unavailable)');
+        
+        // Fallback to regular streaming with full message history
+        const messageHistory = [...updatedMessages];
+
+        for await (const chunk of streamChatCompletion(messageHistory)) {
+          assistantMessage.content += chunk;
+          const latestContent = assistantMessage.content;
+
+          updateConversationById(conversationId, (conversation) => {
+            const updated = [...conversation.messages];
+            const lastIndex = updated.length - 1;
+            if (lastIndex >= 0) {
+              updated[lastIndex] = { ...updated[lastIndex], content: latestContent };
+            }
+
+            return {
+              ...conversation,
+              messages: updated,
+              updatedAt: Date.now(),
+            };
+          });
+        }
+      }
+
+      // Save assistant message to database after streaming completes
+      if (assistantMessage.content) {
+        try {
+          await api.addMessage(conversationId, 'assistant', assistantMessage.content);
+        } catch (error) {
+          console.error('Failed to save assistant message:', error);
+        }
       }
     } catch (error) {
       console.error('Error sending message:', error);
