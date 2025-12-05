@@ -432,8 +432,16 @@ function App() {
           console.log('[App] Using standard Azure OpenAI (Response API unavailable)');
         }
         
-        // Standard streaming with full message history
-        const messageHistory = [...updatedMessages];
+        // Standard streaming with optimized message history
+        // Only send recent context (last 20 messages) to avoid massive token usage
+        const MAX_CONTEXT_MESSAGES = 20;
+        const messageHistory = updatedMessages.length > MAX_CONTEXT_MESSAGES
+          ? updatedMessages.slice(-MAX_CONTEXT_MESSAGES)
+          : [...updatedMessages];
+        
+        if (updatedMessages.length > MAX_CONTEXT_MESSAGES) {
+          console.log(`[App] Using last ${MAX_CONTEXT_MESSAGES} messages for context (optimized from ${updatedMessages.length} total)`);
+        }
 
         for await (const chunk of streamChatCompletion(messageHistory)) {
           assistantMessage.content += chunk;
