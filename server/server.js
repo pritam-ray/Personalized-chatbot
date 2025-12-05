@@ -239,7 +239,13 @@ app.post('/api/conversations/:id/messages', async (req, res) => {
     });
   } catch (error) {
     console.error('Error adding message:', error);
-    res.status(500).json({ error: 'Failed to add message' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+      sql: error.sql
+    });
+    res.status(500).json({ error: 'Failed to add message', details: error.message });
   }
 });
 
