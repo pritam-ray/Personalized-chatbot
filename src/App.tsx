@@ -351,54 +351,76 @@ function App() {
         updatedAt: Date.now(),
       }));
 
-      // Use Azure Response API with session management if no attachments
-      // This maintains context on Azure's side and reduces token costs
-      const useSessionAPI = azureResponseAPI.isConfigured() && !attachments?.length;
+      // Azure Response API currently doesn't support images/documents
+      // Always use standard API if attachments are present
+      const hasAttachments = attachments && attachments.length > 0;
+      const canUseSessionAPI = azureResponseAPI.isConfigured() && !hasAttachments;
 
-      if (useSessionAPI) {
-        console.log('[App] Using Azure Response API with session management');
+      let responseAPIFailed = false;
+
+      if (canUseSessionAPI) {
+        console.log('[App] Attempting Azure Response API with session management (token savings)');
         
-        let sessionId = activeConversation.azureSessionId;
-        
-        for await (const chunk of azureResponseAPI.streamWithSession(content, { sessionId })) {
-          if (chunk.done) {
-            // Store session ID for future messages
-            if (chunk.sessionId && chunk.sessionId !== sessionId) {
-              sessionId = chunk.sessionId;
-              try {
-                await api.updateConversationSession(conversationId, sessionId);
-                updateConversationById(conversationId, (conversation) => ({
-                  ...conversation,
-                  azureSessionId: sessionId,
-                }));
-              } catch (error) {
-                console.error('Failed to save session ID:', error);
+        try {
+          let sessionId = activeConversation.azureSessionId;
+          
+          for await (const chunk of azureResponseAPI.streamWithSession(content, { sessionId })) {
+            if (chunk.done) {
+              // Store session ID for future messages
+              if (chunk.sessionId && chunk.sessionId !== sessionId) {
+                sessionId = chunk.sessionId;
+                try {
+                  await api.updateConversationSession(conversationId, sessionId);
+                  updateConversationById(conversationId, (conversation) => ({
+                    ...conversation,
+                    azureSessionId: sessionId,
+                  }));
+                  console.log('[App] ✓ Session ID saved for context retention');
+                } catch (error) {
+                  console.error('Failed to save session ID:', error);
+                }
               }
+              break;
             }
-            break;
+
+            assistantMessage.content += chunk.content;
+            const latestContent = assistantMessage.content;
+
+            updateConversationById(conversationId, (conversation) => {
+              const updated = [...conversation.messages];
+              const lastIndex = updated.length - 1;
+              if (lastIndex >= 0) {
+                updated[lastIndex] = { ...updated[lastIndex], content: latestContent };
+              }
+
+              return {
+                ...conversation,
+                messages: updated,
+                updatedAt: Date.now(),
+              };
+            });
           }
-
-          assistantMessage.content += chunk.content;
-          const latestContent = assistantMessage.content;
-
-          updateConversationById(conversationId, (conversation) => {
-            const updated = [...conversation.messages];
-            const lastIndex = updated.length - 1;
-            if (lastIndex >= 0) {
-              updated[lastIndex] = { ...updated[lastIndex], content: latestContent };
-            }
-
-            return {
-              ...conversation,
-              messages: updated,
-              updatedAt: Date.now(),
-            };
-          });
+        } catch (error) {
+          console.warn('[App] Response API failed, falling back to standard API:', error);
+          responseAPIFailed = true;
+          assistantMessage.content = ''; // Reset content for fallback
         }
-      } else {
-        console.log('[App] Using standard Azure OpenAI (with attachments or session API unavailable)');
+      }
+
+      // Use standard API if:
+      // 1. Has attachments (images/documents not supported by Response API)
+      // 2. Response API not configured
+      // 3. Response API failed (fallback)
+      if (hasAttachments || !canUseSessionAPI || responseAPIFailed) {
+        if (hasAttachments) {
+          console.log('[App] Using standard Azure OpenAI (attachments detected - multimodal support)');
+        } else if (responseAPIFailed) {
+          console.log('[App] Using standard Azure OpenAI (fallback mode)');
+        } else {
+          console.log('[App] Using standard Azure OpenAI (Response API unavailable)');
+        }
         
-        // Fallback to regular streaming with full message history
+        // Standard streaming with full message history
         const messageHistory = [...updatedMessages];
 
         for await (const chunk of streamChatCompletion(messageHistory)) {
