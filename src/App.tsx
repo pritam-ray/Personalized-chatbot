@@ -352,9 +352,13 @@ function App() {
       }));
 
       // Azure Response API currently doesn't support images/documents
-      // Always use standard API if attachments are present
-      const hasAttachments = attachments && attachments.length > 0;
-      const canUseSessionAPI = azureResponseAPI.isConfigured() && !hasAttachments;
+      // Check if current message OR any previous message has attachments
+      const hasCurrentAttachments = attachments && attachments.length > 0;
+      const hasHistoryAttachments = conversationMessages.some(msg => msg.attachments && msg.attachments.length > 0);
+      const hasAnyAttachments = hasCurrentAttachments || hasHistoryAttachments;
+      
+      // Only use Response API if no attachments in entire conversation
+      const canUseSessionAPI = azureResponseAPI.isConfigured() && !hasAnyAttachments;
 
       let responseAPIFailed = false;
 
@@ -408,12 +412,12 @@ function App() {
       }
 
       // Use standard API if:
-      // 1. Has attachments (images/documents not supported by Response API)
+      // 1. Has attachments in current or previous messages (images/documents need full context)
       // 2. Response API not configured
       // 3. Response API failed (fallback)
-      if (hasAttachments || !canUseSessionAPI || responseAPIFailed) {
-        if (hasAttachments) {
-          console.log('[App] Using standard Azure OpenAI (attachments detected - multimodal support)');
+      if (hasAnyAttachments || !canUseSessionAPI || responseAPIFailed) {
+        if (hasAnyAttachments) {
+          console.log('[App] Using standard Azure OpenAI (conversation contains attachments - full context with multimodal support)');
         } else if (responseAPIFailed) {
           console.log('[App] Using standard Azure OpenAI (fallback mode)');
         } else {
