@@ -1,7 +1,8 @@
 /**
  * Azure OpenAI Response API Client
- * Uses Azure's Response API with session management for context retention
- * This reduces token costs by maintaining conversation context on Azure's side
+ * Uses optimized context windows to reduce token costs
+ * Sends only recent messages while maintaining conversation context
+ * History is stored in MySQL database for persistence
  */
 
 import type { Message } from './azureOpenAI';
@@ -12,7 +13,7 @@ const AZURE_API_VERSION = import.meta.env.VITE_AZURE_OPENAI_API_VERSION || '2024
 const AZURE_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT_NAME;
 
 interface ResponseAPIOptions {
-  sessionId?: string; // Existing session ID for context continuity
+  previousResponseId?: string; // Previous response ID for chaining
   temperature?: number;
   maxTokens?: number;
 }
@@ -39,29 +40,38 @@ export class AzureResponseAPI {
   }
 
   /**
-   * Stream a chat response with session management
-   * If sessionId is provided, Azure maintains context automatically
+   * Stream a chat response using Azure Response API v1
+   * Uses previous_response_id for stateful conversation chaining
+   * Azure maintains full context server-side - no need to send history!
    */
-  async *streamWithSession(
-    userMessage: string,
+  async *streamWithContext(
+    currentMessage: string,
     options: ResponseAPIOptions = {}
-  ): AsyncGenerator<{ content: string; sessionId?: string; done?: boolean }> {
+  ): AsyncGenerator<{ content: string; responseId?: string; done?: boolean }> {
     if (!this.isConfigured()) {
       throw new Error('Azure OpenAI not configured');
     }
 
-    const url = `${this.endpoint}/openai/deployments/${this.deployment}/chat/completions?api-version=${this.apiVersion}`;
+    // Use Response API v1 endpoint
+    const url = `${this.endpoint}/openai/v1/responses`;
+    
+    if (options.previousResponseId) {
+      console.log(`[AzureResponseAPI] Chaining to previous response: ${options.previousResponseId}`);
+    } else {
+      console.log('[AzureResponseAPI] Starting new conversation');
+    }
     
     const requestBody: any = {
-      messages: [{ role: 'user', content: userMessage }],
+      model: this.deployment,
+      input: currentMessage,
       stream: true,
       temperature: options.temperature || 0.7,
-      max_tokens: options.maxTokens || 4000,
+      max_output_tokens: options.maxTokens || 4000,
     };
-
-    // Add session context if provided
-    if (options.sessionId) {
-      requestBody.session_id = options.sessionId;
+    
+    // Chain to previous response for context (Azure maintains history)
+    if (options.previousResponseId) {
+      requestBody.previous_response_id = options.previousResponseId;
     }
 
     const response = await fetch(url, {
@@ -78,11 +88,6 @@ export class AzureResponseAPI {
       throw new Error(`Azure Response API error: ${response.status} - ${error}`);
     }
 
-    // Extract session ID from response headers
-    const sessionId = response.headers.get('x-ms-session-id') || 
-                      response.headers.get('azureml-model-session') ||
-                      options.sessionId;
-
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
 
@@ -91,14 +96,15 @@ export class AzureResponseAPI {
     }
 
     let buffer = '';
+    let responseId: string | undefined;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
 
         if (done) {
-          // Send session ID on completion
-          yield { content: '', sessionId, done: true };
+          console.log('[AzureResponseAPI] Stream complete. Response ID:', responseId);
+          yield { content: '', responseId, done: true };
           break;
         }
 
@@ -113,15 +119,35 @@ export class AzureResponseAPI {
             continue;
           }
 
+          if (trimmedLine.startsWith('event: ')) {
+            // Response API uses event types like response.output_text.delta
+            continue;
+          }
+
           if (trimmedLine.startsWith('data: ')) {
             try {
               const jsonStr = trimmedLine.slice(6);
               const data = JSON.parse(jsonStr);
 
-              if (data.choices?.[0]?.delta?.content) {
+              // Extract response ID from any event
+              if (data.response?.id) {
+                responseId = data.response.id;
+              } else if (data.id && data.id.startsWith('resp_')) {
+                responseId = data.id;
+              }
+
+              // Handle text delta events
+              if (data.type === 'response.output_text.delta' && data.delta) {
+                yield { 
+                  content: data.delta,
+                  responseId
+                };
+              }
+              // Fallback for standard chat completion format
+              else if (data.choices?.[0]?.delta?.content) {
                 yield { 
                   content: data.choices[0].delta.content,
-                  sessionId
+                  responseId
                 };
               }
             } catch (e) {

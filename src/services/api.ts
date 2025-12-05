@@ -3,7 +3,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000
 export interface Conversation {
   id: string;
   title: string;
-  azure_session_id?: string;
+  azure_response_id?: string;
   created_at: number;
   updated_at: number;
   messages: any[];
@@ -27,12 +27,12 @@ export async function fetchConversation(id: string): Promise<Conversation> {
 export async function createConversation(
   id: string, 
   title: string, 
-  azureSessionId?: string
+  azureResponseId?: string
 ): Promise<Conversation> {
   const response = await fetch(`${API_BASE_URL}/conversations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, title, azureSessionId })
+    body: JSON.stringify({ id, title, azureResponseId })
   });
   if (!response.ok) throw new Error('Failed to create conversation');
   return response.json();
@@ -48,14 +48,14 @@ export async function updateConversationTitle(id: string, title: string): Promis
   if (!response.ok) throw new Error('Failed to update conversation');
 }
 
-// Update conversation Azure session ID
-export async function updateConversationSession(id: string, azureSessionId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/conversations/${id}/session`, {
+// Update conversation Azure response ID
+export async function updateConversationResponse(id: string, azureResponseId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${id}/response`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ azureSessionId })
+    body: JSON.stringify({ azureResponseId })
   });
-  if (!response.ok) throw new Error('Failed to update session');
+  if (!response.ok) throw new Error('Failed to update response ID');
 }
 
 // Delete conversation

@@ -111,18 +111,18 @@ app.get('/api/conversations/:id', async (req, res) => {
 // Create new conversation
 app.post('/api/conversations', async (req, res) => {
   try {
-    const { id, title, azureSessionId } = req.body;
+    const { id, title, azureResponseId } = req.body;
     const now = Date.now();
     
     await pool.query(
-      'INSERT INTO conversations (id, title, azure_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-      [id, title || 'New chat', azureSessionId || null, now, now]
+      'INSERT INTO conversations (id, title, azure_response_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      [id, title || 'New chat', azureResponseId || null, now, now]
     );
     
     res.status(201).json({
       id,
       title: title || 'New chat',
-      azure_session_id: azureSessionId || null,
+      azure_response_id: azureResponseId || null,
       created_at: now,
       updated_at: now,
       messages: []
@@ -152,22 +152,22 @@ app.patch('/api/conversations/:id/title', async (req, res) => {
   }
 });
 
-// Update conversation Azure session ID
-app.patch('/api/conversations/:id/session', async (req, res) => {
+// Update conversation Azure response ID
+app.patch('/api/conversations/:id/response', async (req, res) => {
   try {
     const { id } = req.params;
-    const { azureSessionId } = req.body;
+    const { azureResponseId } = req.body;
     const now = Date.now();
     
     await pool.query(
-      'UPDATE conversations SET azure_session_id = ?, updated_at = ? WHERE id = ?',
-      [azureSessionId, now, id]
+      'UPDATE conversations SET azure_response_id = ?, updated_at = ? WHERE id = ?',
+      [azureResponseId, now, id]
     );
     
     res.json({ success: true });
   } catch (error) {
-    console.error('Error updating Azure session:', error);
-    res.status(500).json({ error: 'Failed to update Azure session' });
+    console.error('Error updating Azure response ID:', error);
+    res.status(500).json({ error: 'Failed to update Azure response ID' });
   }
 });
 

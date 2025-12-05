@@ -17,11 +17,11 @@ USE chatbot;
 CREATE TABLE IF NOT EXISTS conversations (
   id VARCHAR(255) PRIMARY KEY,
   title VARCHAR(500) NOT NULL DEFAULT 'New chat',
-  azure_session_id VARCHAR(255) NULL COMMENT 'Azure Response API session ID for context management',
+  azure_response_id VARCHAR(255) NULL COMMENT 'Azure Response API response ID (previous_response_id for context chaining)',
   created_at BIGINT NOT NULL COMMENT 'Timestamp in milliseconds',
   updated_at BIGINT NOT NULL COMMENT 'Timestamp in milliseconds',
   INDEX idx_updated_at (updated_at),
-  INDEX idx_azure_session_id (azure_session_id)
+  INDEX idx_azure_response_id (azure_response_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ========================================

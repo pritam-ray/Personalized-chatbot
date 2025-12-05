@@ -30,7 +30,7 @@ const createConversation = (): Conversation => {
     messages: [],
     createdAt: timestamp,
     updatedAt: timestamp,
-    azureSessionId: undefined,
+    azureResponseId: undefined,
   };
 };
 
@@ -101,7 +101,7 @@ function App() {
             messages: conv.messages || [],
             createdAt: conv.created_at,
             updatedAt: conv.updated_at,
-            azureSessionId: conv.azure_session_id,
+            azureResponseId: conv.azure_response_id,
           }));
           
           const sorted = mapped.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -367,25 +367,29 @@ function App() {
       let responseAPIFailed = false;
 
       if (canUseSessionAPI) {
-        console.log('[App] Attempting Azure Response API with session management (token savings)');
+        console.log('[App] Using Azure Response API with stateful chaining (zero token overhead)');
+        console.log('[App] Previous Response ID:', activeConversation.azureResponseId || 'None (new conversation)');
         
         try {
-          let sessionId = activeConversation.azureSessionId;
+          let responseId = activeConversation.azureResponseId;
           
-          for await (const chunk of azureResponseAPI.streamWithSession(content, { sessionId })) {
+          // Only send current message - Azure maintains full history via previous_response_id
+          for await (const chunk of azureResponseAPI.streamWithContext(content, { 
+            previousResponseId: activeConversation.azureResponseId 
+          })) {
             if (chunk.done) {
-              // Store session ID for future messages
-              if (chunk.sessionId && chunk.sessionId !== sessionId) {
-                sessionId = chunk.sessionId;
+              // Store the new response ID for future chaining
+              if (chunk.responseId) {
+                responseId = chunk.responseId;
                 try {
-                  await api.updateConversationSession(conversationId, sessionId);
+                  await api.updateConversationResponse(conversationId, responseId);
                   updateConversationById(conversationId, (conversation) => ({
                     ...conversation,
-                    azureSessionId: sessionId,
+                    azureResponseId: responseId,
                   }));
-                  console.log('[App] ✓ Session ID saved for context retention');
+                  console.log('[App] ✓ Response ID saved for context chaining:', responseId);
                 } catch (error) {
-                  console.error('Failed to save session ID:', error);
+                  console.error('[App] Failed to save response ID:', error);
                 }
               }
               break;
