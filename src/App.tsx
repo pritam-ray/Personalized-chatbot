@@ -352,13 +352,17 @@ function App() {
       }));
 
       // Azure Response API currently doesn't support images/documents
-      // Check if current message OR any previous message has attachments
+      // Check if current message has attachments
       const hasCurrentAttachments = attachments && attachments.length > 0;
-      const hasHistoryAttachments = conversationMessages.some(msg => msg.attachments && msg.attachments.length > 0);
-      const hasAnyAttachments = hasCurrentAttachments || hasHistoryAttachments;
       
-      // Only use Response API if no attachments in entire conversation
-      const canUseSessionAPI = azureResponseAPI.isConfigured() && !hasAnyAttachments;
+      // Check if any recent message (last 5 messages) has attachments
+      const recentMessages = conversationMessages.slice(-5); // Last 5 messages
+      const hasRecentAttachments = recentMessages.some(msg => msg.attachments && msg.attachments.length > 0);
+      
+      // Use Response API if:
+      // - No current attachments AND
+      // - No attachments in last 5 messages (old attachments beyond context window)
+      const canUseSessionAPI = azureResponseAPI.isConfigured() && !hasCurrentAttachments && !hasRecentAttachments;
 
       let responseAPIFailed = false;
 
@@ -412,12 +416,16 @@ function App() {
       }
 
       // Use standard API if:
-      // 1. Has attachments in current or previous messages (images/documents need full context)
+      // 1. Has attachments in current message or recent history (images/documents need full context)
       // 2. Response API not configured
       // 3. Response API failed (fallback)
-      if (hasAnyAttachments || !canUseSessionAPI || responseAPIFailed) {
-        if (hasAnyAttachments) {
-          console.log('[App] Using standard Azure OpenAI (conversation contains attachments - full context with multimodal support)');
+      const needsStandardAPI = hasCurrentAttachments || hasRecentAttachments;
+      
+      if (needsStandardAPI || !canUseSessionAPI || responseAPIFailed) {
+        if (hasCurrentAttachments) {
+          console.log('[App] Using standard Azure OpenAI (current message has attachments - multimodal support)');
+        } else if (hasRecentAttachments) {
+          console.log('[App] Using standard Azure OpenAI (recent attachments in context - full history with multimodal)');
         } else if (responseAPIFailed) {
           console.log('[App] Using standard Azure OpenAI (fallback mode)');
         } else {
