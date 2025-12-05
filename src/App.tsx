@@ -351,64 +351,45 @@ function App() {
         updatedAt: Date.now(),
       }));
 
-      // Azure Response API supports PDFs and images
-      // Always try to use Response API for token savings
-      const canUseSessionAPI = azureResponseAPI.isConfigured();
-
-      let responseAPIFailed = false;
-
-      if (canUseSessionAPI) {
-        console.log('[App] Using Azure Response API with stateful chaining (zero token overhead)');
-        console.log('[App] Previous Response ID:', activeConversation.azureResponseId || 'None (new conversation)');
+      // Primary: Use Azure Response API (supports text, images, PDFs with stateful context)
+      if (azureResponseAPI.isConfigured()) {
+        console.log('[App] Using Azure Response API with stateful chaining');
+        console.log('[App] Previous Response ID:', activeConversation.azureResponseId || 'New conversation');
         
         try {
-          let responseId = activeConversation.azureResponseId;
-          
           // Format input for Response API
           let input: any;
           if (attachments && attachments.length > 0) {
             // Multi-modal input with attachments
             const contentParts: any[] = [];
             
-            // Add text content
             if (content.trim()) {
-              contentParts.push({
-                type: 'input_text',
-                text: content
-              });
+              contentParts.push({ type: 'input_text', text: content });
             }
             
-            // Add file attachments
             for (const attachment of attachments) {
               if (attachment.type === 'image') {
-                contentParts.push({
-                  type: 'input_image',
-                  image_url: attachment.dataUrl
-                });
+                contentParts.push({ type: 'input_image', image_url: attachment.dataUrl });
               } else if (attachment.type === 'pdf') {
-                contentParts.push({
-                  type: 'input_file',
-                  filename: attachment.fileName,
-                  file_data: attachment.dataUrl
+                contentParts.push({ 
+                  type: 'input_file', 
+                  filename: attachment.fileName, 
+                  file_data: attachment.dataUrl 
                 });
               }
             }
             
-            input = [{
-              role: 'user',
-              content: contentParts
-            }];
+            input = [{ role: 'user', content: contentParts }];
           } else {
-            // Simple text input
             input = content;
           }
           
-          // Only send current message - Azure maintains full history via previous_response_id
+          let responseId = activeConversation.azureResponseId;
+          
           for await (const chunk of azureResponseAPI.streamWithContext(input, { 
             previousResponseId: activeConversation.azureResponseId 
           })) {
             if (chunk.done) {
-              // Store the new response ID for future chaining
               if (chunk.responseId) {
                 responseId = chunk.responseId;
                 try {
@@ -417,7 +398,7 @@ function App() {
                     ...conversation,
                     azureResponseId: responseId,
                   }));
-                  console.log('[App] ✓ Response ID saved for context chaining:', responseId);
+                  console.log('[App] ✓ Response ID saved:', responseId);
                 } catch (error) {
                   console.error('[App] Failed to save response ID:', error);
                 }
@@ -426,67 +407,37 @@ function App() {
             }
 
             assistantMessage.content += chunk.content;
-            const latestContent = assistantMessage.content;
 
             updateConversationById(conversationId, (conversation) => {
               const updated = [...conversation.messages];
               const lastIndex = updated.length - 1;
               if (lastIndex >= 0) {
-                updated[lastIndex] = { ...updated[lastIndex], content: latestContent };
+                updated[lastIndex] = { ...updated[lastIndex], content: assistantMessage.content };
               }
-
-              return {
-                ...conversation,
-                messages: updated,
-                updatedAt: Date.now(),
-              };
+              return { ...conversation, messages: updated, updatedAt: Date.now() };
             });
           }
         } catch (error) {
-          console.warn('[App] Response API failed, falling back to standard API:', error);
-          responseAPIFailed = true;
-          assistantMessage.content = ''; // Reset content for fallback
+          console.error('[App] Response API error:', error);
+          throw error; // Will be caught by outer try-catch
         }
-      }
-
-      // Use standard API if:
-      // 1. Response API not configured
-      // 2. Response API failed (fallback)
-      
-      if (!canUseSessionAPI || responseAPIFailed) {
-        if (responseAPIFailed) {
-          console.log('[App] Using standard Azure OpenAI (fallback mode)');
-        } else {
-          console.log('[App] Using standard Azure OpenAI (Response API unavailable)');
-        }
+      } else {
+        // Fallback: Standard Chat Completions API (only if Response API not configured)
+        console.log('[App] Response API not configured, using standard API');
         
-        // Standard streaming with optimized message history
-        // Only send recent context (last 20 messages) to avoid massive token usage
         const MAX_CONTEXT_MESSAGES = 20;
-        const messageHistory = updatedMessages.length > MAX_CONTEXT_MESSAGES
-          ? updatedMessages.slice(-MAX_CONTEXT_MESSAGES)
-          : [...updatedMessages];
-        
-        if (updatedMessages.length > MAX_CONTEXT_MESSAGES) {
-          console.log(`[App] Using last ${MAX_CONTEXT_MESSAGES} messages for context (optimized from ${updatedMessages.length} total)`);
-        }
+        const messageHistory = updatedMessages.slice(-MAX_CONTEXT_MESSAGES);
 
         for await (const chunk of streamChatCompletion(messageHistory)) {
           assistantMessage.content += chunk;
-          const latestContent = assistantMessage.content;
 
           updateConversationById(conversationId, (conversation) => {
             const updated = [...conversation.messages];
             const lastIndex = updated.length - 1;
             if (lastIndex >= 0) {
-              updated[lastIndex] = { ...updated[lastIndex], content: latestContent };
+              updated[lastIndex] = { ...updated[lastIndex], content: assistantMessage.content };
             }
-
-            return {
-              ...conversation,
-              messages: updated,
-              updatedAt: Date.now(),
-            };
+            return { ...conversation, messages: updated, updatedAt: Date.now() };
           });
         }
       }
