@@ -455,12 +455,12 @@ function App() {
         updatedAt: Date.now(),
       }));
 
-      // Use the existing Azure Response API logic
+      // Use Azure Response API with streaming
       if (azureResponseAPI.isConfigured()) {
         console.log('[Regenerate] Using Azure Response API');
         
         try {
-          // Format input for Response API (same as handleSendMessage)
+          // Format input for Response API
           let input: any;
           if (lastUserMessage.attachments && lastUserMessage.attachments.length > 0) {
             const contentParts: any[] = [];
@@ -481,55 +481,77 @@ function App() {
               }
             }
             
-            input = contentParts;
+            input = [{ role: 'user', content: contentParts }];
           } else {
             input = lastUserMessage.content;
           }
 
-          // Call Azure Response API
-          const response = await azureResponseAPI.sendMessage(
-            input,
-            activeConversation.azureResponseId,
-            (chunk) => {
-              updateConversationById(conversationId, (conversation) => {
-                const msgs = conversation.messages;
-                const lastMsg = msgs[msgs.length - 1];
-                if (lastMsg && lastMsg.role === 'assistant') {
-                  return {
+          let responseId = activeConversation.azureResponseId;
+          
+          // Stream the response
+          for await (const chunk of azureResponseAPI.streamWithContext(input, { 
+            previousResponseId: activeConversation.azureResponseId 
+          })) {
+            if (controller.signal.aborted) {
+              break;
+            }
+
+            if (chunk.done) {
+              if (chunk.responseId) {
+                responseId = chunk.responseId;
+                try {
+                  await api.updateConversationResponse(conversationId, responseId);
+                  updateConversationById(conversationId, (conversation) => ({
                     ...conversation,
-                    messages: [
-                      ...msgs.slice(0, -1),
-                      { ...lastMsg, content: lastMsg.content + chunk },
-                    ],
-                  };
+                    azureResponseId: responseId,
+                  }));
+                  console.log('[Regenerate] ✓ Response ID saved:', responseId);
+                } catch (error) {
+                  console.error('[Regenerate] Failed to save response ID:', error);
                 }
-                return conversation;
+              }
+              break;
+            }
+
+            assistantMessage.content += chunk.content;
+
+            // Batch updates
+            const contentLength = assistantMessage.content.length;
+            const shouldUpdate = contentLength % 50 === 0 || chunk.content.includes('\n');
+            
+            if (shouldUpdate) {
+              updateConversationById(conversationId, (conversation) => {
+                const updated = [...conversation.messages];
+                const lastIndex = updated.length - 1;
+                if (lastIndex >= 0) {
+                  updated[lastIndex] = { ...updated[lastIndex], content: assistantMessage.content };
+                }
+                return { ...conversation, messages: updated, updatedAt: Date.now() };
               });
-            },
-            controller.signal
-          );
+              scrollToBottom();
+            }
+          }
+
+          // Final update
+          updateConversationById(conversationId, (conversation) => {
+            const updated = [...conversation.messages];
+            const lastIndex = updated.length - 1;
+            if (lastIndex >= 0) {
+              updated[lastIndex] = { ...updated[lastIndex], content: assistantMessage.content };
+            }
+            return { ...conversation, messages: updated, updatedAt: Date.now() };
+          });
 
           // Save to database
-          const finalMessages = [...updatedMessages, { ...assistantMessage, content: response.content }];
-          const lastAssistant = finalMessages[finalMessages.length - 1];
-          
           try {
             await api.addMessage(
               conversationId,
               'assistant',
-              lastAssistant.content,
-              lastAssistant.content
+              assistantMessage.content,
+              assistantMessage.content
             );
-
-            if (response.responseId) {
-              await api.updateConversationResponse(conversationId, response.responseId);
-              updateConversationById(conversationId, (conversation) => ({
-                ...conversation,
-                azureResponseId: response.responseId,
-              }));
-            }
           } catch (error) {
-            console.error('Failed to save regenerated response:', error);
+            console.error('[Regenerate] Failed to save message:', error);
           }
         } catch (error: any) {
           if (error.name === 'AbortError') {
@@ -538,6 +560,56 @@ function App() {
             console.error('[Regenerate] Azure Response API error:', error);
             throw error;
           }
+        }
+      } else {
+        // Fallback to standard API
+        console.log('[Regenerate] Using standard API');
+        const MAX_CONTEXT_MESSAGES = 20;
+        const messageHistory = updatedMessages.slice(-MAX_CONTEXT_MESSAGES);
+
+        for await (const chunk of streamChatCompletion([...messageHistory, lastUserMessage])) {
+          if (controller.signal.aborted) {
+            break;
+          }
+
+          assistantMessage.content += chunk;
+
+          const contentLength = assistantMessage.content.length;
+          const shouldUpdate = contentLength % 50 === 0 || chunk.includes('\n');
+          
+          if (shouldUpdate) {
+            updateConversationById(conversationId, (conversation) => {
+              const updated = [...conversation.messages];
+              const lastIndex = updated.length - 1;
+              if (lastIndex >= 0) {
+                updated[lastIndex] = { ...updated[lastIndex], content: assistantMessage.content };
+              }
+              return { ...conversation, messages: updated, updatedAt: Date.now() };
+            });
+            scrollToBottom();
+          }
+        }
+
+        // Final update
+        updateConversationById(conversationId, (conversation) => {
+          const updated = [...conversation.messages];
+          const lastIndex = updated.length - 1;
+          if (lastIndex >= 0) {
+            updated[lastIndex] = { ...updated[lastIndex], content: assistantMessage.content };
+          }
+          return { ...conversation, messages: updated, updatedAt: Date.now() };
+        });
+
+        // Save to database
+        try {
+          await api.addMessage(
+            conversationId,
+            'assistant',
+            assistantMessage.content,
+            assistantMessage.content
+          );
+        } catch (error) {
+          console.error('[Regenerate] Failed to save message:', error);
         }
       }
     } catch (error: any) {
