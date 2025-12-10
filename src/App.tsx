@@ -56,6 +56,68 @@ const summarizeTitle = (conversation: Conversation, content: string) => {
   return cleaned.length > 40 ? `${cleaned.slice(0, 40).trim()}…` : cleaned;
 };
 
+// Generate a meaningful title from AI response using Azure OpenAI
+const generateTitleFromResponse = async (userMessage: string, assistantResponse: string): Promise<string> => {
+  try {
+    const endpoint = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT;
+    const apiKey = import.meta.env.VITE_AZURE_OPENAI_API_KEY;
+    const deployment = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT_NAME;
+    const apiVersion = import.meta.env.VITE_AZURE_OPENAI_API_VERSION;
+
+    if (!endpoint || !apiKey || !deployment) {
+      console.warn('Azure OpenAI not configured for title generation');
+      return summarizeTitle({ title: DEFAULT_TITLE } as Conversation, userMessage);
+    }
+
+    const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'system',
+            content: 'Generate a concise, descriptive title (3-6 words) for this conversation. Return only the title, nothing else.',
+          },
+          {
+            role: 'user',
+            content: userMessage,
+          },
+          {
+            role: 'assistant',
+            content: assistantResponse,
+          },
+        ],
+        max_tokens: 20,
+        temperature: 0.5,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to generate title: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const generatedTitle = data.choices?.[0]?.message?.content?.trim();
+
+    if (generatedTitle && generatedTitle.length > 0) {
+      // Clean up the title - remove quotes if present
+      return generatedTitle.replace(/^["']|["']$/g, '').slice(0, 50);
+    }
+
+    // Fallback to user message-based title
+    return summarizeTitle({ title: DEFAULT_TITLE } as Conversation, userMessage);
+  } catch (error) {
+    console.error('Error generating title:', error);
+    // Fallback to user message-based title
+    return summarizeTitle({ title: DEFAULT_TITLE } as Conversation, userMessage);
+  }
+};
+
 function resolveInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
@@ -362,16 +424,7 @@ function App() {
 
     const conversationMessages = activeConversation.messages;
     const updatedMessages = [...conversationMessages, userMessage];
-    const newTitle = summarizeTitle(activeConversation, userMessage.displayContent || userMessage.content);
-
-    // Update title in database if it's the first message
-    if (conversationMessages.length === 0 && newTitle !== DEFAULT_TITLE) {
-      try {
-        await api.updateConversationTitle(conversationId, newTitle);
-      } catch (error) {
-        console.error('Failed to update conversation title:', error);
-      }
-    }
+    const isFirstMessage = conversationMessages.length === 0;
 
     // Save user message to database
     try {
@@ -389,7 +442,6 @@ function App() {
     updateConversationById(conversationId, (conversation) => ({
       ...conversation,
       messages: updatedMessages,
-      title: newTitle,
       updatedAt: Date.now(),
     }));
 
@@ -505,6 +557,31 @@ function App() {
           await api.addMessage(conversationId, 'assistant', assistantMessage.content);
         } catch (error) {
           console.error('Failed to save assistant message:', error);
+        }
+      }
+
+      // Generate and update title based on assistant's first response
+      if (isFirstMessage && assistantMessage.content) {
+        try {
+          const generatedTitle = await generateTitleFromResponse(
+            userMessage.displayContent || userMessage.content,
+            assistantMessage.content
+          );
+          
+          if (generatedTitle !== DEFAULT_TITLE) {
+            // Update title in database
+            await api.updateConversationTitle(conversationId, generatedTitle);
+            
+            // Update title in state
+            updateConversationById(conversationId, (conversation) => ({
+              ...conversation,
+              title: generatedTitle,
+            }));
+            
+            console.log('[App] ✓ Generated title:', generatedTitle);
+          }
+        } catch (error) {
+          console.error('Failed to generate/update conversation title:', error);
         }
       }
     } catch (error) {
