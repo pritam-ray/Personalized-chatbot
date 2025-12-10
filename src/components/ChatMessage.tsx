@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { User, Bot, Image as ImageIcon, FileText, RotateCw } from 'lucide-react';
 import type { Attachment, Message } from '../services/azureOpenAI';
-import { renderMarkdownToHTML, markdownToPlainText } from '../utils/markdown';
+import { renderMarkdownToHTML } from '../utils/markdown';
 import 'katex/dist/katex.min.css';
 
 interface ChatMessageProps {
@@ -169,11 +169,8 @@ export function ChatMessage({ message, isHighlighted, searchQuery, onRegenerate,
 
   const copyMessageToClipboard = async () => {
     try {
-      // For assistant messages, convert markdown to plain text
-      // For user messages, use the display content as-is
-      const textToCopy = isAssistant 
-        ? markdownToPlainText(message.content || '') 
-        : (displayContent || '');
+      // Copy raw content (markdown as-is)
+      const textToCopy = isAssistant ? (message.content || '') : (displayContent || '');
       await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
