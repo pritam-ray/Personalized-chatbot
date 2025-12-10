@@ -228,31 +228,31 @@ export function ChatMessage({ message, isHighlighted, searchQuery, onRegenerate,
             ))}
           </div>
         ) : null}
-        {/* Action buttons: Copy and Regenerate (for assistant messages) */}
-        <div className="message-actions flex items-center gap-2 mt-2 px-3 pb-3">
-          <button
-            type="button"
-            onClick={copyMessageToClipboard}
-            className="message-action-btn inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs"
-            title="Copy message"
-            aria-label="Copy message"
-          >
-            <span className="action-icon" dangerouslySetInnerHTML={{ __html: copied ? SUCCESS_ICON : COPY_ICON }} />
-            <span>{copied ? 'Copied!' : 'Copy'}</span>
-          </button>
-          {isAssistant && isLastAssistantMessage && onRegenerate && (
+        {/* Action buttons: Copy and Regenerate (for assistant messages) - Always visible */}
+        {isAssistant && (
+          <div className="message-actions flex items-center gap-1 mt-2">
             <button
               type="button"
-              onClick={onRegenerate}
-              className="message-action-btn inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs"
-              title="Regenerate response"
-              aria-label="Regenerate response"
+              onClick={copyMessageToClipboard}
+              className="message-action-btn"
+              title={copied ? 'Copied!' : 'Copy'}
+              aria-label="Copy message"
             >
-              <RotateCw className="h-3.5 w-3.5" />
-              <span>Regenerate</span>
+              <span className="action-icon" dangerouslySetInnerHTML={{ __html: copied ? SUCCESS_ICON : COPY_ICON }} />
             </button>
-          )}
-        </div>
+            {isLastAssistantMessage && onRegenerate && (
+              <button
+                type="button"
+                onClick={onRegenerate}
+                className="message-action-btn"
+                title="Regenerate response"
+                aria-label="Regenerate response"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </article>
   );

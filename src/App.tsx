@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Moon, Sun, Menu, Bot, Plus, Search } from 'lucide-react';
+import { MessageSquare, Moon, Sun, Menu, Bot, Plus, Search, User, LogOut } from 'lucide-react';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { Sidebar } from './components/Sidebar';
 import { SearchModal } from './components/SearchModal';
-// import { LoginPage } from './components/LoginPage';
-// import { SignupPage } from './components/SignupPage';
-// import { useAuth } from './contexts/AuthContext';
+import { LoginPage } from './components/LoginPage';
+import { SignupPage } from './components/SignupPage';
+import { useAuth } from './contexts/AuthContext';
 import { Attachment, Message, streamChatCompletion } from './services/azureOpenAI';
 import { azureResponseAPI } from './services/azureResponseAPI';
 import * as api from './services/api';
@@ -129,9 +129,9 @@ function resolveInitialTheme(): Theme {
 }
 
 function App() {
-  // const { isAuthenticated, user, logout } = useAuth();
-  // const [showSignup, setShowSignup] = useState(false);
-  // const [showUserMenu, setShowUserMenu] = useState(false);
+  const { isAuthenticated, isLoading: authLoading, user, logout } = useAuth();
+  const [showSignup, setShowSignup] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [conversationState, setConversationState] = useState<ConversationState>(() => loadInitialConversationState());
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
@@ -192,21 +192,22 @@ function App() {
   }, [highlightedMessageId]);
 
   // Close user menu when clicking outside
-  // Authentication temporarily disabled
-  // useEffect(() => {
-  //   const handleClickOutside = (e: MouseEvent) => {
-  //     const target = e.target as HTMLElement;
-  //     if (showUserMenu && !target.closest('[aria-label="User menu"]') && !target.closest('.absolute.right-0')) {
-  //       setShowUserMenu(false);
-  //     }
-  //   };
-
-  //   document.addEventListener('click', handleClickOutside);
-  //   return () => document.removeEventListener('click', handleClickOutside);
-  // }, [showUserMenu]);
-
-  // Load conversations from database on mount
   useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (showUserMenu && !target.closest('[aria-label="User menu"]') && !target.closest('.absolute.right-0')) {
+        setShowUserMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showUserMenu]);
+
+  // Load conversations from database on mount (only when authenticated)
+  useEffect(() => {
+    if (!isAuthenticated || authLoading) return;
+    
     const loadFromDatabase = async () => {
       try {
         const dbConversations = await api.fetchConversations();
@@ -252,7 +253,7 @@ function App() {
     };
     
     loadFromDatabase();
-  }, []);
+  }, [isAuthenticated, authLoading]);
 
   // Save active conversation ID to localStorage
   useEffect(() => {
@@ -710,15 +711,25 @@ function App() {
     }
   };
 
-  // Show login/signup pages if not authenticated
-  // Authentication temporarily disabled
-  // if (!isAuthenticated) {
-  //   return showSignup ? (
-  //     <SignupPage onSwitchToLogin={() => setShowSignup(false)} />
-  //   ) : (
-  //     <LoginPage onSwitchToSignup={() => setShowSignup(true)} />
-  //   );
-  // }
+  // Show authentication screens if not authenticated
+  if (authLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-app)]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mx-auto mb-4"></div>
+          <p className="text-[var(--text-secondary)]">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return showSignup ? (
+      <SignupPage onSwitchToLogin={() => setShowSignup(false)} />
+    ) : (
+      <LoginPage onSwitchToSignup={() => setShowSignup(true)} />
+    );
+  }
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] transition-colors duration-300">
@@ -726,6 +737,24 @@ function App() {
         className={`sidebar-overlay md:hidden ${isSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
         onClick={() => setIsSidebarOpen(false)}
         aria-hidden="true"
+      />
+
+      <SearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        conversations={conversations}
+        onSelectMessage={(conversationId, messageId, searchQuery) => {
+          setIsSearchModalOpen(false);
+          if (conversationId !== activeConversationId) {
+            handleSelectConversation(conversationId);
+          }
+          setHighlightedMessageId(messageId);
+          setSearchQueryForHighlight(searchQuery);
+          setTimeout(() => {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            messageElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 100);
+        }}
       />
 
       <Sidebar
@@ -816,8 +845,8 @@ function App() {
                 </span>
               </button>
               
-              {/* User Menu - Authentication temporarily disabled */}
-              {/* <div className="relative">
+              {/* User Menu */}
+              <div className="relative">
                 <button
                   type="button"
                   onClick={() => setShowUserMenu(!showUserMenu)}
@@ -847,7 +876,7 @@ function App() {
                     </button>
                   </div>
                 )}
-              </div> */}
+              </div>
             </div>
           </div>
         </header>
