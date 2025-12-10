@@ -938,4 +938,60 @@ export function renderMarkdownToHTML(content: string): string {
   }
 }
 
+/**
+ * Convert markdown to plain text (human-readable format)
+ * Preserves formatting like newlines, lists, and code blocks without markdown syntax
+ */
+export function markdownToPlainText(markdown: string): string {
+  if (!markdown) return '';
+  
+  let text = markdown;
+  
+  // Convert headers to plain text with newlines
+  text = text.replace(/^#{1,6}\s+(.+)$/gm, '$1\n');
+  
+  // Convert bold/italic to plain text (remove markers)
+  text = text.replace(/\*\*\*(.+?)\*\*\*/g, '$1'); // bold+italic
+  text = text.replace(/\*\*(.+?)\*\*/g, '$1'); // bold
+  text = text.replace(/\*(.+?)\*/g, '$1'); // italic
+  text = text.replace(/__(.+?)__/g, '$1'); // bold
+  text = text.replace(/_(.+?)_/g, '$1'); // italic
+  
+  // Convert inline code to plain text
+  text = text.replace(/`([^`]+)`/g, '$1');
+  
+  // Convert code blocks to indented text
+  text = text.replace(/```[\w]*\n([\s\S]*?)```/g, (match, code) => {
+    return code.split('\n').map((line: string) => line).join('\n') + '\n';
+  });
+  
+  // Convert links to just the text or URL
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
+  
+  // Convert images to alt text
+  text = text.replace(/!\[([^\]]*)\]\([^)]+\)/g, '[Image: $1]');
+  
+  // Convert bullet lists
+  text = text.replace(/^\s*[-*+]\s+(.+)$/gm, '• $1');
+  
+  // Convert numbered lists
+  text = text.replace(/^\s*\d+\.\s+(.+)$/gm, (match, item) => {
+    return item;
+  });
+  
+  // Convert blockquotes
+  text = text.replace(/^>\s+(.+)$/gm, '$1');
+  
+  // Convert horizontal rules
+  text = text.replace(/^[-*_]{3,}$/gm, '---');
+  
+  // Clean up extra whitespace but preserve paragraph breaks
+  text = text.replace(/\n{3,}/g, '\n\n');
+  
+  // Trim leading/trailing whitespace
+  text = text.trim();
+  
+  return text;
+}
+
 
