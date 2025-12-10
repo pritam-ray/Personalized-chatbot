@@ -226,7 +226,7 @@ export function ChatMessage({ message, isHighlighted, searchQuery }: ChatMessage
           </div>
         ) : null}
         {/* Copy message button (copies raw content for assistant, display content for user) */}
-        <div className="mt-2 px-3 pb-3">
+        <div className="flex justify-end mt-2 px-3 pb-3">
           <button
             type="button"
             onClick={copyMessageToClipboard}
