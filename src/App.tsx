@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Moon, Sun, Menu, Bot, Plus, Search, LogOut, User } from 'lucide-react';
+import { MessageSquare, Moon, Sun, Menu, Bot, Plus, Search } from 'lucide-react';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { Sidebar } from './components/Sidebar';
 import { SearchModal } from './components/SearchModal';
-import { LoginPage } from './components/LoginPage';
-import { SignupPage } from './components/SignupPage';
-import { useAuth } from './contexts/AuthContext';
+// import { LoginPage } from './components/LoginPage';
+// import { SignupPage } from './components/SignupPage';
+// import { useAuth } from './contexts/AuthContext';
 import { Attachment, Message, streamChatCompletion } from './services/azureOpenAI';
 import { azureResponseAPI } from './services/azureResponseAPI';
 import * as api from './services/api';
@@ -129,9 +129,9 @@ function resolveInitialTheme(): Theme {
 }
 
 function App() {
-  const { isAuthenticated, user, logout } = useAuth();
-  const [showSignup, setShowSignup] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
+  // const { isAuthenticated, user, logout } = useAuth();
+  // const [showSignup, setShowSignup] = useState(false);
+  // const [showUserMenu, setShowUserMenu] = useState(false);
   const [conversationState, setConversationState] = useState<ConversationState>(() => loadInitialConversationState());
   const [isLoading, setIsLoading] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => resolveInitialTheme());
@@ -171,17 +171,18 @@ function App() {
   }, [highlightedMessageId]);
 
   // Close user menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (showUserMenu && !target.closest('[aria-label="User menu"]') && !target.closest('.absolute.right-0')) {
-        setShowUserMenu(false);
-      }
-    };
+  // Authentication temporarily disabled
+  // useEffect(() => {
+  //   const handleClickOutside = (e: MouseEvent) => {
+  //     const target = e.target as HTMLElement;
+  //     if (showUserMenu && !target.closest('[aria-label="User menu"]') && !target.closest('.absolute.right-0')) {
+  //       setShowUserMenu(false);
+  //     }
+  //   };
 
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showUserMenu]);
+  //   document.addEventListener('click', handleClickOutside);
+  //   return () => document.removeEventListener('click', handleClickOutside);
+  // }, [showUserMenu]);
 
   // Load conversations from database on mount
   useEffect(() => {
@@ -610,13 +611,14 @@ function App() {
   };
 
   // Show login/signup pages if not authenticated
-  if (!isAuthenticated) {
-    return showSignup ? (
-      <SignupPage onSwitchToLogin={() => setShowSignup(false)} />
-    ) : (
-      <LoginPage onSwitchToSignup={() => setShowSignup(true)} />
-    );
-  }
+  // Authentication temporarily disabled
+  // if (!isAuthenticated) {
+  //   return showSignup ? (
+  //     <SignupPage onSwitchToLogin={() => setShowSignup(false)} />
+  //   ) : (
+  //     <LoginPage onSwitchToSignup={() => setShowSignup(true)} />
+  //   );
+  // }
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] transition-colors duration-300">
@@ -714,8 +716,8 @@ function App() {
                 </span>
               </button>
               
-              {/* User Menu */}
-              <div className="relative">
+              {/* User Menu - Authentication temporarily disabled */}
+              {/* <div className="relative">
                 <button
                   type="button"
                   onClick={() => setShowUserMenu(!showUserMenu)}
@@ -745,7 +747,7 @@ function App() {
                     </button>
                   </div>
                 )}
-              </div>
+              </div> */}
             </div>
           </div>
         </header>
