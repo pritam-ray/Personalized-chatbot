@@ -412,20 +412,31 @@ function App() {
     const messages = activeConversation.messages;
     if (messages.length < 2) return; // Need at least a user message and assistant response
     
-    // Remove the last assistant message
+    // Get the last assistant message and the user message before it
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role !== 'assistant') return;
+    
     const lastUserMessageIndex = messages.length - 2;
     const lastUserMessage = messages[lastUserMessageIndex];
-    
     if (lastUserMessage.role !== 'user') return;
     
-    // Remove last assistant message from state and database
+    // Delete last assistant message from database
+    try {
+      await api.deleteLastMessage(activeConversation.id);
+    } catch (error) {
+      console.error('Failed to delete last message:', error);
+      alert('Failed to regenerate response. Please try again.');
+      return;
+    }
+    
+    // Remove last assistant message from state
     const updatedMessages = messages.slice(0, -1);
     updateConversationById(activeConversation.id, (conversation) => ({
       ...conversation,
       messages: updatedMessages,
     }));
     
-    // Resend the last user message
+    // Resend the last user message to generate a new response
     await handleSendMessage(
       lastUserMessage.content,
       lastUserMessage.displayContent,

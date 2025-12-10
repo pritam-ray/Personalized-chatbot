@@ -18,20 +18,60 @@ function getAuthHeaders(): HeadersInit {
   };
 }
 
+// Refresh access token helper
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) return false;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken })
+    });
+
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    localStorage.setItem('accessToken', data.accessToken);
+    return true;
+  } catch (error) {
+    console.error('Token refresh failed:', error);
+    return false;
+  }
+}
+
+// Fetch wrapper with automatic token refresh
+async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...getAuthHeaders(), ...(options.headers || {}) }
+  });
+
+  // If unauthorized, try to refresh token and retry once
+  if (response.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      return fetch(url, {
+        ...options,
+        headers: { ...getAuthHeaders(), ...(options.headers || {}) }
+      });
+    }
+  }
+
+  return response;
+}
+
 // Fetch all conversations from backend
 export async function fetchConversations(): Promise<Conversation[]> {
-  const response = await fetch(`${API_BASE_URL}/conversations`, {
-    headers: getAuthHeaders()
-  });
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations`);
   if (!response.ok) throw new Error('Failed to fetch conversations');
   return response.json();
 }
 
 // Get single conversation
 export async function fetchConversation(id: string): Promise<Conversation> {
-  const response = await fetch(`${API_BASE_URL}/conversations/${id}`, {
-    headers: getAuthHeaders()
-  });
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations/${id}`);
   if (!response.ok) throw new Error('Failed to fetch conversation');
   return response.json();
 }
@@ -42,9 +82,8 @@ export async function createConversation(
   title: string, 
   azureResponseId?: string
 ): Promise<Conversation> {
-  const response = await fetch(`${API_BASE_URL}/conversations`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations`, {
     method: 'POST',
-    headers: getAuthHeaders(),
     body: JSON.stringify({ id, title, azureResponseId })
   });
   if (!response.ok) throw new Error('Failed to create conversation');
@@ -53,9 +92,8 @@ export async function createConversation(
 
 // Update conversation title
 export async function updateConversationTitle(id: string, title: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/conversations/${id}/title`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations/${id}/title`, {
     method: 'PATCH',
-    headers: getAuthHeaders(),
     body: JSON.stringify({ title })
   });
   if (!response.ok) throw new Error('Failed to update conversation');
@@ -63,9 +101,8 @@ export async function updateConversationTitle(id: string, title: string): Promis
 
 // Update conversation Azure response ID
 export async function updateConversationResponse(id: string, azureResponseId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/conversations/${id}/response`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations/${id}/response`, {
     method: 'PATCH',
-    headers: getAuthHeaders(),
     body: JSON.stringify({ azureResponseId })
   });
   if (!response.ok) throw new Error('Failed to update response ID');
@@ -73,9 +110,8 @@ export async function updateConversationResponse(id: string, azureResponseId: st
 
 // Delete conversation
 export async function deleteConversation(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/conversations/${id}`, {
-    method: 'DELETE',
-    headers: getAuthHeaders()
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations/${id}`, {
+    method: 'DELETE'
   });
   if (!response.ok) throw new Error('Failed to delete conversation');
 }
@@ -88,9 +124,8 @@ export async function addMessage(
   displayContent?: string,
   attachments?: any[]
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
     method: 'POST',
-    headers: getAuthHeaders(),
     body: JSON.stringify({
       role,
       content,
@@ -101,6 +136,14 @@ export async function addMessage(
   if (!response.ok) throw new Error('Failed to add message');
 }
 
+// Delete last message from conversation
+export async function deleteLastMessage(conversationId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations/${conversationId}/messages/last`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) throw new Error('Failed to delete last message');
+}
+
 // Azure session management
 export async function saveAzureSession(
   sessionId: string,
@@ -108,18 +151,15 @@ export async function saveAzureSession(
   modelName?: string,
   totalTokens?: number
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/azure-sessions`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/azure-sessions`, {
     method: 'POST',
-    headers: getAuthHeaders(),
     body: JSON.stringify({ sessionId, conversationId, modelName, totalTokens })
   });
   if (!response.ok) throw new Error('Failed to save Azure session');
 }
 
 export async function getAzureSession(conversationId: string): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/session`, {
-    headers: getAuthHeaders()
-  });
+  const response = await fetchWithAuth(`${API_BASE_URL}/conversations/${conversationId}/session`);
   if (!response.ok) {
     if (response.status === 404) return null;
     throw new Error('Failed to fetch Azure session');
