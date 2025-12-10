@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { 
   generateAccessToken, 
   generateRefreshToken, 
@@ -46,9 +47,7 @@ function createAuthRoutes(pool) {
       const passwordHash = await bcrypt.hash(password, 10);
 
       // Generate user ID
-      const userId = typeof crypto !== 'undefined' && crypto.randomUUID 
-        ? crypto.randomUUID() 
-        : `user_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const userId = crypto.randomUUID();
 
       const now = Date.now();
 
