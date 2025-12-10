@@ -947,8 +947,16 @@ export function markdownToPlainText(markdown: string): string {
   
   let text = markdown;
   
-  // Convert headers to plain text with proper spacing
-  text = text.replace(/^#{1,6}\s+(.+)$/gm, '$1\n');
+  // First, normalize line endings
+  text = text.replace(/\r\n/g, '\n');
+  
+  // Convert code blocks with proper formatting (do this first to preserve content)
+  text = text.replace(/```[\w]*\n([\s\S]*?)```/g, (match, code) => {
+    return '\n\n' + code.trim() + '\n\n';
+  });
+  
+  // Convert headers to plain text with double newline after
+  text = text.replace(/^#{1,6}\s+(.+)$/gm, '\n$1\n');
   
   // Convert bold/italic to plain text (remove markers)
   text = text.replace(/\*\*\*(.+?)\*\*\*/g, '$1'); // bold+italic
@@ -960,18 +968,12 @@ export function markdownToPlainText(markdown: string): string {
   // Convert inline code to plain text (preserve content)
   text = text.replace(/`([^`]+)`/g, '$1');
   
-  // Convert code blocks with proper formatting
-  text = text.replace(/```[\w]*\n([\s\S]*?)```/g, (match, code) => {
-    return '\n' + code.trim() + '\n\n';
-  });
-  
-  // Convert links to just the text (show URL only for external links)
-  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
-    // If text and URL are different, show both
-    if (text.toLowerCase() !== url.toLowerCase()) {
-      return `${text} (${url})`;
+  // Convert links to text with URL if different
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+    if (linkText.toLowerCase() !== url.toLowerCase() && !url.startsWith('#')) {
+      return `${linkText} (${url})`;
     }
-    return text;
+    return linkText;
   });
   
   // Convert images to descriptive text
@@ -979,32 +981,36 @@ export function markdownToPlainText(markdown: string): string {
     return alt ? `[Image: ${alt}]` : '[Image]';
   });
   
-  // Convert bullet lists with proper spacing
+  // Convert bullet lists - preserve with bullet character
   text = text.replace(/^\s*[-*+]\s+(.+)$/gm, '• $1');
   
-  // Convert numbered lists (preserve numbers)
+  // Convert numbered lists - preserve numbering
   text = text.replace(/^\s*(\d+)\.\s+(.+)$/gm, '$1. $2');
   
-  // Convert blockquotes with spacing
+  // Convert blockquotes - remove > but keep content
   text = text.replace(/^>\s+(.+)$/gm, '$1');
   
-  // Convert horizontal rules
+  // Convert horizontal rules to simple line
   text = text.replace(/^[-*_]{3,}$/gm, '\n---\n');
   
-  // Handle markdown section breaks (---)
-  text = text.replace(/\s*---\s*/g, '\n\n---\n\n');
+  // Preserve paragraph breaks - ensure double newlines between paragraphs
+  // Split by double newlines to preserve intentional paragraph breaks
+  const paragraphs = text.split(/\n\n+/);
+  text = paragraphs
+    .map(p => p.trim())
+    .filter(p => p.length > 0)
+    .join('\n\n');
   
-  // Clean up excessive whitespace but preserve paragraph breaks
+  // Ensure single spaces after sentence-ending punctuation
+  text = text.replace(/([.!?])\s*([A-Z])/g, '$1  $2');
+  
+  // Clean up multiple spaces (but keep double spaces after sentences)
+  text = text.replace(/([^.!?\s])\s{3,}/g, '$1 ');
+  
+  // Final cleanup of excessive newlines (max 2)
   text = text.replace(/\n{3,}/g, '\n\n');
   
-  // Clean up spaces around newlines
-  text = text.replace(/ +\n/g, '\n');
-  text = text.replace(/\n +/g, '\n');
-  
-  // Ensure proper spacing after periods and punctuation
-  text = text.replace(/([.!?])([A-Z])/g, '$1 $2');
-  
-  // Trim leading/trailing whitespace
+  // Trim overall
   text = text.trim();
   
   return text;
