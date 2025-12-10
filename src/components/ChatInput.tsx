@@ -164,7 +164,11 @@ export function ChatInput({ onSend, isGenerating, onStop }: ChatInputProps) {
           {isGenerating ? (
             <button
               type="button"
-              onClick={onStop}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onStop();
+              }}
               className="flex h-10 w-10 sm:h-11 sm:w-11 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] transition hover:bg-[var(--accent-hover)]"
               aria-label="Stop generating"
               title="Stop generating"
