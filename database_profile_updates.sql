@@ -4,12 +4,14 @@
 
 USE chatbot;
 
--- Add profile fields to users table
+-- Add profile fields to users table (only if they don't exist)
 ALTER TABLE users 
-ADD COLUMN IF NOT EXISTS first_name VARCHAR(100) NULL COMMENT 'User first name',
-ADD COLUMN IF NOT EXISTS last_name VARCHAR(100) NULL COMMENT 'User last name';
+ADD COLUMN first_name VARCHAR(100) NULL COMMENT 'User first name';
 
--- Make username unique
+ALTER TABLE users 
+ADD COLUMN last_name VARCHAR(100) NULL COMMENT 'User last name';
+
+-- Make username unique (ignore error if index already exists)
 ALTER TABLE users 
 ADD UNIQUE INDEX idx_username_unique (username);
 
