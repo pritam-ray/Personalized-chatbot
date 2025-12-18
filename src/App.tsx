@@ -225,19 +225,6 @@ function App() {
     return () => window.removeEventListener('popstate', checkRoute);
   }, [isAuthenticated, showProfile]);
 
-  // Close user menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (showUserMenu && !target.closest('[aria-label="User menu"]') && !target.closest('.absolute.right-0')) {
-        setShowUserMenu(false);
-      }
-    };
-
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showUserMenu]);
-
   // Load conversations from database on mount (only when authenticated)
   useEffect(() => {
     if (!isAuthenticated || authLoading) return;
