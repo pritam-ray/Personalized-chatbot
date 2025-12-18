@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const { authenticateToken, optionalAuth } = require('./middleware/auth');
 const createAuthRoutes = require('./routes/auth');
+const { testEmailConnection } = require('./services/emailService');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -37,6 +38,18 @@ pool.getConnection()
   })
   .catch(err => {
     console.error('✗ MySQL connection error:', err.message);
+  });
+
+// Test email connection
+testEmailConnection()
+  .then(connected => {
+    if (!connected) {
+      console.warn('⚠️  Email service not configured - password reset emails will not be sent');
+      console.warn('    Configure EMAIL_USER and EMAIL_PASSWORD in .env file to enable email functionality');
+    }
+  })
+  .catch(err => {
+    console.warn('⚠️  Email connection test failed:', err.message);
   });
 
 // ========================================

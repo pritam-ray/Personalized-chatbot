@@ -7,6 +7,7 @@ const {
   verifyRefreshToken,
   authenticateToken 
 } = require('../middleware/auth');
+const { sendPasswordResetEmail } = require('../services/emailService');
 
 function createAuthRoutes(pool) {
   const router = express.Router();
@@ -353,7 +354,9 @@ function createAuthRoutes(pool) {
 
       // Always return success to prevent email enumeration
       if (users.length === 0) {
-        return res.json({ message: 'If an account exists, a reset link will be sent' });
+        return res.json({ 
+          message: 'If an account with that email exists, a password reset link has been sent.'
+        });
       }
 
       const user = users[0];
@@ -369,14 +372,18 @@ function createAuthRoutes(pool) {
         [user.id, resetToken, expiresAt, now]
       );
 
-      // In production, send email here
-      console.log(`Password reset token for ${email}: ${resetToken}`);
-      console.log(`Reset link: http://localhost:5173/reset-password?token=${resetToken}`);
+      // Send password reset email
+      const emailSent = await sendPasswordResetEmail(user.email, resetToken);
+      
+      if (emailSent) {
+        console.log(`✓ Password reset email sent to ${user.email}`);
+      } else {
+        console.error(`✗ Failed to send reset email to ${user.email}`);
+        // Still return success to prevent email enumeration
+      }
 
       res.json({ 
-        message: 'If an account exists, a reset link will be sent',
-        // Only include token in development
-        ...(process.env.NODE_ENV !== 'production' && { resetToken })
+        message: 'If an account with that email exists, a password reset link has been sent.'
       });
     } catch (error) {
       console.error('Forgot password error:', error);
