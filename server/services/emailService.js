@@ -72,7 +72,7 @@ const sendPasswordResetEmail = async (to, resetToken) => {
           .logo {
             font-size: 24px;
             font-weight: bold;
-            color: #10a37f;
+            color: #ffffffff;
             margin-bottom: 10px;
           }
           .content {
@@ -84,7 +84,7 @@ const sendPasswordResetEmail = async (to, resetToken) => {
           .button {
             display: inline-block;
             padding: 14px 30px;
-            background-color: #10a37f;
+            background-color: #004d3aff;
             color: white;
             text-decoration: none;
             border-radius: 6px;
