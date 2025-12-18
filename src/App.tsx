@@ -198,6 +198,18 @@ function App() {
     return () => document.removeEventListener('click', handleClick);
   }, [highlightedMessageId]);
 
+  // Check for password reset token in URL on mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token && !isAuthenticated) {
+      setResetToken(token);
+      setShowResetPassword(true);
+      // Clear token from URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [isAuthenticated]);
+
   // Close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -920,18 +932,6 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    // Check for reset token in URL
-    if (!showResetPassword && !resetToken) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-      if (token) {
-        setResetToken(token);
-        setShowResetPassword(true);
-        // Clear token from URL
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    }
-
     if (showResetPassword && resetToken) {
       return (
         <ResetPasswordPage 
