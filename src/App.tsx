@@ -210,6 +210,22 @@ function App() {
     }
   }, [isAuthenticated]);
 
+  // Handle profile page routing
+  useEffect(() => {
+    const checkRoute = () => {
+      const path = window.location.pathname;
+      if (path === '/profile' && isAuthenticated) {
+        setShowProfile(true);
+      } else if (path !== '/profile' && showProfile) {
+        setShowProfile(false);
+      }
+    };
+
+    checkRoute();
+    window.addEventListener('popstate', checkRoute);
+    return () => window.removeEventListener('popstate', checkRoute);
+  }, [isAuthenticated, showProfile]);
+
   // Close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -969,7 +985,10 @@ function App() {
 
   // Show profile page as a separate screen
   if (showProfile) {
-    return <ProfilePage onBack={() => setShowProfile(false)} />;
+    return <ProfilePage onBack={() => {
+      setShowProfile(false);
+      window.history.pushState({}, '', '/');
+    }} />;
   }
 
   return (
@@ -1107,6 +1126,7 @@ function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        window.history.pushState({}, '', '/profile');
                         setShowProfile(true);
                         setShowUserMenu(false);
                       }}
