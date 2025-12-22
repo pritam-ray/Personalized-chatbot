@@ -251,10 +251,15 @@ function App() {
           
           const sorted = mapped.sort((a, b) => b.updatedAt - a.updatedAt);
           
-          // Don't auto-select any conversation - show welcome page
+          // Check if there's a stored active conversation ID from previous session
+          const storedActiveId = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+          const activeId = storedActiveId && sorted.some(c => c.id === storedActiveId) 
+            ? storedActiveId 
+            : null; // Show welcome page if no stored conversation or it doesn't exist
+          
           setConversationState({
             conversations: sorted,
-            activeConversationId: null,
+            activeConversationId: activeId,
           });
         } else {
           // No conversations in database - show welcome page
@@ -274,7 +279,11 @@ function App() {
   // Save active conversation ID to localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
+    if (activeConversationId) {
+      window.localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
+    } else {
+      window.localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+    }
   }, [activeConversationId]);
 
   useEffect(() => {
