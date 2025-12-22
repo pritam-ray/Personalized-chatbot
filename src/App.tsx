@@ -253,9 +253,10 @@ function App() {
           
           // Check if there's a stored active conversation ID from previous session
           const storedActiveId = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+          // Only restore if the conversation exists in database (has messages)
           const activeId = storedActiveId && sorted.some(c => c.id === storedActiveId) 
             ? storedActiveId 
-            : null; // Show welcome page if no stored conversation or it doesn't exist
+            : null; // Show welcome page if no stored conversation or it doesn't exist in database
           
           setConversationState({
             conversations: sorted,
@@ -669,21 +670,30 @@ function App() {
       return;
     }
 
+    // Delete current empty conversation if switching away from it
+    if (currentActive && currentActive.messages.length === 0) {
+      try {
+        await api.deleteConversation(currentActive.id);
+      } catch (error) {
+        console.error('Failed to delete empty conversation:', error);
+      }
+    }
+
     const conversation = createConversation();
     
-    // Create in database
-    try {
-      await api.createConversation(conversation.id, conversation.title);
-    } catch (error) {
-      console.error('Failed to create conversation in database:', error);
-      alert('Failed to create new conversation. Please try again.');
-      return;
-    }
+    // Don't create in database yet - will be created when first message is sent
     
-    setConversationState((prev) => ({
-      conversations: [conversation, ...prev.conversations],
-      activeConversationId: conversation.id,
-    }));
+    setConversationState((prev) => {
+      // Remove previous empty conversation from state if exists
+      const updatedConversations = currentActive && currentActive.messages.length === 0
+        ? prev.conversations.filter((c) => c.id !== currentActive.id)
+        : prev.conversations;
+      
+      return {
+        conversations: [conversation, ...updatedConversations],
+        activeConversationId: conversation.id,
+      };
+    });
     setIsSidebarOpen(false);
     setIsLoading(false);
   };
@@ -720,6 +730,17 @@ function App() {
     }
 
     const conversationId = activeConversation.id;
+    const isFirstMessage = activeConversation.messages.length === 0;
+    
+    // If this is the first message, create conversation in database
+    if (isFirstMessage) {
+      try {
+        await api.createConversation(conversationId, activeConversation.title);
+      } catch (error) {
+        console.error('Failed to create conversation in database:', error);
+        // Continue anyway - conversation exists in local state
+      }
+    }
     const userMessage: Message = {
       id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2, 11),
       role: 'user',
