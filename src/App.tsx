@@ -374,7 +374,19 @@ function App() {
     }
   };
 
-  const handleSelectConversation = (conversationId: string, messageId?: string, searchQuery?: string) => {
+  const handleSelectConversation = async (conversationId: string, messageId?: string, searchQuery?: string) => {
+    // Check and delete empty conversation before switching
+    const currentActive = conversationState.conversations.find((c) => c.id === conversationState.activeConversationId);
+    
+    if (currentActive && currentActive.messages.length === 0 && conversationState.activeConversationId !== conversationId) {
+      // Delete from database
+      try {
+        await api.deleteConversation(currentActive.id);
+      } catch (error) {
+        console.error('Failed to delete empty conversation:', error);
+      }
+    }
+
     setConversationState((prev) => {
       if (!prev.conversations.some((conversation) => conversation.id === conversationId)) {
         return prev;
