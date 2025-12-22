@@ -130,6 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     localStorage.setItem('user', JSON.stringify(data.user));
+    // Set welcome flag for new user
+    localStorage.setItem('chatgpt-clone-show-welcome', 'true');
   };
 
   const login = async (email: string, password: string) => {
@@ -153,6 +155,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     localStorage.setItem('user', JSON.stringify(data.user));
+    // Set welcome flag for returning user
+    localStorage.setItem('chatgpt-clone-show-welcome', 'true');
   };
 
   const logout = async () => {
@@ -180,6 +184,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
       localStorage.removeItem('chatgpt-clone-active-conversation');
+      // Set welcome flag so it shows on next login
+      localStorage.setItem('chatgpt-clone-show-welcome', 'true');
     }
   };
 

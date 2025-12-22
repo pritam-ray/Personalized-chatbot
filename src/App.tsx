@@ -19,6 +19,7 @@ import type { Conversation } from './types/chat';
 
 const THEME_STORAGE_KEY = 'chatgpt-clone-theme';
 const ACTIVE_CONVERSATION_KEY = 'chatgpt-clone-active-conversation';
+const SHOW_WELCOME_KEY = 'chatgpt-clone-show-welcome';
 const DEFAULT_TITLE = 'New chat';
 
 type Theme = 'dark' | 'light';
@@ -140,6 +141,13 @@ function App() {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [resetToken, setResetToken] = useState('');
   const [showProfile, setShowProfile] = useState(false);
+  const [shouldShowWelcome, setShouldShowWelcome] = useState(() => {
+    // Check if we should show welcome page from localStorage
+    if (typeof window !== 'undefined') {
+      return window.localStorage.getItem(SHOW_WELCOME_KEY) === 'true';
+    }
+    return false;
+  });
   const [conversationState, setConversationState] = useState<ConversationState>(() => loadInitialConversationState());
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
@@ -253,24 +261,35 @@ function App() {
           
           // Check if there's a stored active conversation ID from previous session
           const storedActiveId = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
-          console.log('Stored conversation ID:', storedActiveId);
-          console.log('Available conversations:', sorted.map(c => c.id));
-          // Only restore if the conversation exists in database (has messages)
-          const activeId = storedActiveId && sorted.some(c => c.id === storedActiveId) 
-            ? storedActiveId 
-            : null; // Show welcome page if no stored conversation or it doesn't exist in database
-          console.log('Restoring conversation ID:', activeId);
           
-          setConversationState({
-            conversations: sorted,
-            activeConversationId: activeId,
-          });
+          // If we have a stored conversation and it exists in database, restore it
+          // This ensures refresh keeps you in the same conversation
+          if (storedActiveId && sorted.some(c => c.id === storedActiveId)) {
+            setConversationState({
+              conversations: sorted,
+              activeConversationId: storedActiveId,
+            });
+            // Clear welcome flag since we're restoring a conversation
+            setShouldShowWelcome(false);
+            window.localStorage.removeItem(SHOW_WELCOME_KEY);
+          } else {
+            // No stored conversation or it doesn't exist
+            // Check if we should show welcome page
+            const showWelcome = window.localStorage.getItem(SHOW_WELCOME_KEY) === 'true';
+            setConversationState({
+              conversations: sorted,
+              activeConversationId: null,
+            });
+            setShouldShowWelcome(showWelcome);
+          }
         } else {
-          // No conversations in database - show welcome page
+          // No conversations in database - show welcome page only if flag is set
+          const showWelcome = window.localStorage.getItem(SHOW_WELCOME_KEY) === 'true';
           setConversationState({
             conversations: [],
             activeConversationId: null,
           });
+          setShouldShowWelcome(showWelcome);
         }
       } catch (error) {
         console.error('Failed to load from database:', error);
@@ -280,16 +299,30 @@ function App() {
     loadFromDatabase();
   }, [isAuthenticated, authLoading]);
 
-  // Save active conversation ID to localStorage (only when it changes to a valid ID)
+  // Save active conversation ID to localStorage and clear welcome flag
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // Only update localStorage when we have a valid conversation ID
-    // Don't clear it when setting to null during initial load
+    // When user opens/creates a conversation, save it and clear welcome flag
     if (activeConversationId) {
-      console.log('Saving conversation ID to localStorage:', activeConversationId);
       window.localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
+      // Clear welcome flag since user is now in a conversation
+      setShouldShowWelcome(false);
+      window.localStorage.removeItem(SHOW_WELCOME_KEY);
     }
   }, [activeConversationId]);
+
+  // Set welcome flag when user logs in
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      // Check if this is a fresh login (no active conversation stored)
+      const hasStoredConversation = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+      if (!hasStoredConversation) {
+        // First time after login - show welcome
+        setShouldShowWelcome(true);
+        window.localStorage.setItem(SHOW_WELCOME_KEY, 'true');
+      }
+    }
+  }, [isAuthenticated, authLoading]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -686,6 +719,12 @@ function App() {
     const conversation = createConversation();
     
     // Don't create in database yet - will be created when first message is sent
+    
+    // Clear welcome flag when creating new conversation
+    setShouldShowWelcome(false);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(SHOW_WELCOME_KEY);
+    }
     
     setConversationState((prev) => {
       // Remove previous empty conversation from state if exists
@@ -1182,12 +1221,12 @@ function App() {
 
         <main className="flex-1 overflow-y-auto bg-[var(--bg-app)] transition-colors">
           <div className="w-full px-3 py-4 sm:px-6 sm:py-8">
-            {!activeConversationId ? (
+            {shouldShowWelcome && !activeConversationId ? (
               <WelcomePage 
                 onNewChat={handleNewConversation}
                 userName={user?.username}
               />
-            ) : messages.length === 0 ? (
+            ) : !activeConversationId || messages.length === 0 ? (
               <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-8 text-center">
                 <div className="relative">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--bg-panel)] border-2 border-[var(--border-subtle)]">
