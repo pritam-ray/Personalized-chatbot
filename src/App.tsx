@@ -5,6 +5,7 @@ import { ChatInput } from './components/ChatInput';
 import { Sidebar } from './components/Sidebar';
 import { SearchModal } from './components/SearchModal';
 import { LandingPage } from './components/LandingPage';
+import { WelcomePage } from './components/WelcomePage';
 import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
@@ -24,7 +25,7 @@ type Theme = 'dark' | 'light';
 
 interface ConversationState {
   conversations: Conversation[];
-  activeConversationId: string;
+  activeConversationId: string | null;
 }
 
 const createConversation = (): Conversation => {
@@ -42,9 +43,8 @@ const createConversation = (): Conversation => {
 };
 
 const loadInitialConversationState = (): ConversationState => {
-  // Initial empty state - will be loaded from database in useEffect
-  const conversation = createConversation();
-  return { conversations: [conversation], activeConversationId: conversation.id };
+  // Initial empty state - no conversation selected (will show welcome page)
+  return { conversations: [], activeConversationId: null };
 };
 
 const summarizeTitle = (conversation: Conversation, content: string) => {
@@ -157,7 +157,7 @@ function App() {
   const lastScrollTime = useRef<number>(0);
 
   const { conversations, activeConversationId } = conversationState;
-  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || conversations[0];
+  const activeConversation = activeConversationId ? conversations.find((conversation) => conversation.id === activeConversationId) : null;
   const messages = activeConversation?.messages ?? [];
 
   const scrollToBottom = (immediate = false) => {
@@ -250,25 +250,18 @@ function App() {
           }));
           
           const sorted = mapped.sort((a, b) => b.updatedAt - a.updatedAt);
-          const storedActiveId = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
-          const activeId = sorted.some(c => c.id === storedActiveId) ? storedActiveId! : sorted[0].id;
           
+          // Don't auto-select any conversation - show welcome page
           setConversationState({
             conversations: sorted,
-            activeConversationId: activeId,
+            activeConversationId: null,
           });
         } else {
-          // No conversations in database, create initial one
-          const initialConv = createConversation();
-          try {
-            await api.createConversation(initialConv.id, initialConv.title);
-            setConversationState({
-              conversations: [initialConv],
-              activeConversationId: initialConv.id,
-            });
-          } catch (error) {
-            console.error('Failed to create initial conversation:', error);
-          }
+          // No conversations in database - show welcome page
+          setConversationState({
+            conversations: [],
+            activeConversationId: null,
+          });
         }
       } catch (error) {
         console.error('Failed to load from database:', error);
@@ -680,7 +673,28 @@ function App() {
     _fileName?: string,
     attachments?: Attachment[],
   ) => {
+    // If no active conversation, create one first
     if (!activeConversation) {
+      const conversation = createConversation();
+      
+      // Create in database
+      try {
+        await api.createConversation(conversation.id, conversation.title);
+      } catch (error) {
+        console.error('Failed to create conversation in database:', error);
+        alert('Failed to create new conversation. Please try again.');
+        return;
+      }
+      
+      setConversationState((prev) => ({
+        conversations: [conversation, ...prev.conversations],
+        activeConversationId: conversation.id,
+      }));
+      
+      // Wait a bit for state to update, then send the message
+      setTimeout(() => {
+        handleSendMessage(content, displayContent, _fileName, attachments);
+      }, 100);
       return;
     }
 
@@ -1120,7 +1134,12 @@ function App() {
 
         <main className="flex-1 overflow-y-auto bg-[var(--bg-app)] transition-colors">
           <div className="w-full px-3 py-4 sm:px-6 sm:py-8">
-            {messages.length === 0 ? (
+            {!activeConversationId ? (
+              <WelcomePage 
+                onNewChat={handleNewConversation}
+                userName={user?.username}
+              />
+            ) : messages.length === 0 ? (
               <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-8 text-center">
                 <div className="relative">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--bg-panel)] border-2 border-[var(--border-subtle)]">
