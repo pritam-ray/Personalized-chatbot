@@ -4,6 +4,7 @@ import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { Sidebar } from './components/Sidebar';
 import { SearchModal } from './components/SearchModal';
+import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
@@ -133,6 +134,7 @@ function resolveInitialTheme(): Theme {
 
 function App() {
   const { isAuthenticated, isLoading: authLoading, user, logout } = useAuth();
+  const [showLanding, setShowLanding] = useState(true);
   const [showSignup, setShowSignup] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -934,6 +936,22 @@ function App() {
   }
 
   if (!isAuthenticated) {
+    // Show landing page first
+    if (showLanding) {
+      return (
+        <LandingPage 
+          onGetStarted={() => {
+            setShowLanding(false);
+            setShowSignup(true);
+          }}
+          onLogin={() => {
+            setShowLanding(false);
+            setShowSignup(false);
+          }}
+        />
+      );
+    }
+
     if (showResetPassword && resetToken) {
       return (
         <ResetPasswordPage 
