@@ -44,86 +44,261 @@ class WebSearchService {
   }
 
   /**
-   * Perform Wikipedia search and get article content
+   * Scrape actual content from a web page
    */
-  async performWikipediaSearch(query) {
+  async scrapeWebPage(url, maxLength = 3000) {
     try {
-      console.log(`[Wikipedia] Searching for: ${query}`);
-      
-      // Step 1: Search Wikipedia for relevant articles
-      const searchUrl = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&format=json`;
-      
-      const searchResponse = await axios.get(searchUrl, {
+      const response = await axios.get(url, {
         headers: {
-          'User-Agent': 'ChatGPT-Clone/1.0 (Educational Purpose)'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        timeout: 8000,
+        maxRedirects: 3,
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Remove script, style, nav, footer, and other non-content elements
+      $('script, style, nav, footer, header, iframe, noscript').remove();
+      
+      // Try to find main content areas
+      let content = '';
+      const contentSelectors = [
+        'article',
+        'main',
+        '[role="main"]',
+        '.content',
+        '.article-content',
+        '.post-content',
+        '#content',
+        '.entry-content'
+      ];
+      
+      for (const selector of contentSelectors) {
+        const element = $(selector).first();
+        if (element.length) {
+          content = element.text();
+          break;
+        }
+      }
+      
+      // Fallback to body if no content area found
+      if (!content) {
+        content = $('body').text();
+      }
+      
+      // Clean up whitespace
+      content = content
+        .replace(/\s+/g, ' ')
+        .replace(/\n+/g, '\n')
+        .trim();
+      
+      return content.substring(0, maxLength);
+    } catch (error) {
+      console.log(`[Scraper] Failed to scrape ${url}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Perform real web search using Bing Search API
+   */
+  async performWebSearch(query) {
+    try {
+      console.log(`[Web Search] Searching for: ${query}`);
+      
+      const bingApiKey = process.env.BING_SEARCH_API_KEY;
+      
+      if (!bingApiKey) {
+        console.warn('[Web Search] Bing API key not found, falling back to DuckDuckGo');
+        return await this.performDuckDuckGoSearch(query);
+      }
+
+      // Bing Web Search API v7
+      const searchUrl = 'https://api.bing.microsoft.com/v7.0/search';
+      
+      const response = await axios.get(searchUrl, {
+        headers: {
+          'Ocp-Apim-Subscription-Key': bingApiKey
+        },
+        params: {
+          q: query,
+          count: 5,
+          responseFilter: 'Webpages',
+          textFormat: 'HTML',
+          safeSearch: 'Moderate'
         },
         timeout: 15000,
       });
 
-      const searchResults = searchResponse.data;
-      const titles = searchResults[1] || [];
-      const descriptions = searchResults[2] || [];
-      const urls = searchResults[3] || [];
+      const webPages = response.data.webPages?.value || [];
 
-      if (titles.length === 0) {
-        return 'No relevant Wikipedia articles found for this query. Please try rephrasing your question or provide more specific details.';
+      if (webPages.length === 0) {
+        return 'No web search results found for this query. Please try rephrasing your question.';
       }
 
-      console.log(`[Wikipedia] Found ${titles.length} articles`);
+      console.log(`[Web Search] Found ${webPages.length} results, scraping content...`);
 
-      // Step 2: Fetch detailed content from the top articles
-      let combinedContent = `📚 WIKIPEDIA KNOWLEDGE BASE\n${'='.repeat(60)}\n\n`;
+      // Format results with rich content
+      let combinedContent = `🌐 WEB SEARCH RESULTS\n${'='.repeat(60)}\n\n`;
       combinedContent += `Search Query: "${query}"\n`;
-      combinedContent += `Found ${titles.length} relevant articles\n\n`;
+      combinedContent += `Found ${webPages.length} relevant web pages\n\n`;
       
-      for (let i = 0; i < Math.min(3, titles.length); i++) {
-        const title = titles[i];
+      // Scrape content from top results in parallel
+      const scrapePromises = webPages.slice(0, 3).map(async (page, i) => {
+        const scrapedContent = await this.scrapeWebPage(page.url);
+        return { page, scrapedContent, index: i };
+      });
+      
+      const scrapedResults = await Promise.all(scrapePromises);
+      
+      for (const { page, scrapedContent, index } of scrapedResults) {
+        const i = index;
         
-        try {
-          // Get full introduction extract (not truncated)
-          const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=true&explaintext=true&titles=${encodeURIComponent(title)}&format=json`;
-          
-          const contentResponse = await axios.get(contentUrl, {
-            headers: {
-              'User-Agent': 'ChatGPT-Clone/1.0 (Educational Purpose)'
-            },
-            timeout: 15000,
-          });
-
-          const pages = contentResponse.data.query.pages;
-          const pageId = Object.keys(pages)[0];
-          const extract = pages[pageId].extract || descriptions[i] || 'No content available';
-
-          // Better formatting for each article
-          combinedContent += `\n${'─'.repeat(60)}\n`;
-          combinedContent += `📖 ARTICLE ${i + 1}: ${title}\n`;
-          combinedContent += `${'─'.repeat(60)}\n\n`;
-          
-          // Include more content (up to 2000 characters for better context)
-          const contentToShow = extract.length > 2000 ? extract.substring(0, 2000) + '...' : extract;
-          combinedContent += `${contentToShow}\n\n`;
-          combinedContent += `🔗 Source: ${urls[i]}\n`;
-        } catch (error) {
-          console.error(`[Wikipedia] Error fetching content for ${title}:`, error.message);
-          combinedContent += `\n${'─'.repeat(60)}\n`;
-          combinedContent += `📖 ARTICLE ${i + 1}: ${title}\n`;
-          combinedContent += `${'─'.repeat(60)}\n\n`;
-          combinedContent += `Brief: ${descriptions[i] || 'Content unavailable'}\n\n`;
-          combinedContent += `🔗 Source: ${urls[i]}\n`;
+        combinedContent += `\n${'─'.repeat(60)}\n`;
+        combinedContent += `🔍 RESULT ${i + 1}: ${page.name}\n`;
+        combinedContent += `${'─'.repeat(60)}\n\n`;
+        
+        // Add scraped content if available, otherwise use snippet
+        if (scrapedContent) {
+          combinedContent += `${scrapedContent}\n\n`;
+        } else if (page.snippet) {
+          combinedContent += `${page.snippet}\n\n`;
         }
+        
+        // Add date if available
+        if (page.dateLastCrawled) {
+          const date = new Date(page.dateLastCrawled);
+          combinedContent += `📅 Last Updated: ${date.toLocaleDateString()}\n`;
+        }
+        
+        combinedContent += `🔗 Source: ${page.url}\n`;
+      }
+      
+      // Add remaining results without full content
+      for (let i = 3; i < webPages.length; i++) {
+        const page = webPages[i];
+        combinedContent += `\n${'─'.repeat(60)}\n`;
+        combinedContent += `🔍 RESULT ${i + 1}: ${page.name}\n`;
+        combinedContent += `${'─'.repeat(60)}\n\n`;
+        combinedContent += `${page.snippet}\n\n`;
+        combinedContent += `🔗 Source: ${page.url}\n`;
       }
 
       combinedContent += `\n${'='.repeat(60)}\n`;
-      combinedContent += `💡 Use the information above to provide a comprehensive, accurate answer.\n`;
+      combinedContent += `💡 Use the information above to provide a comprehensive, accurate, and up-to-date answer.\n`;
 
-      console.log(`[Wikipedia] Compiled content: ${combinedContent.length} characters from ${Math.min(3, titles.length)} articles`);
+      console.log(`[Web Search] Compiled content: ${combinedContent.length} characters from ${webPages.length} results`);
       return combinedContent;
     } catch (error) {
-      console.error('[Wikipedia] Search error:', error.message);
-      if (error.code === 'ECONNABORTED') {
-        return 'Wikipedia search timed out. Please try again with a more specific query.';
+      console.error('[Web Search] Error:', error.message);
+      
+      // Fallback to DuckDuckGo if Bing fails
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        console.warn('[Web Search] Bing API authentication failed, falling back to DuckDuckGo');
+        return await this.performDuckDuckGoSearch(query);
       }
-      return `Unable to fetch Wikipedia information at this time. Error: ${error.message}`;
+      
+      if (error.code === 'ECONNABORTED') {
+        return 'Web search timed out. Please try again.';
+      }
+      return `Unable to perform web search at this time. Error: ${error.message}`;
+    }
+  }
+
+  /**
+   * Fallback: DuckDuckGo HTML search with content scraping
+   */
+  async performDuckDuckGoSearch(query) {
+    try {
+      console.log(`[DuckDuckGo] Searching for: ${query}`);
+      
+      // Use DuckDuckGo HTML search
+      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+      
+      const response = await axios.get(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        timeout: 10000,
+      });
+
+      const $ = cheerio.load(response.data);
+      const results = [];
+
+      // Parse DuckDuckGo HTML results
+      $('.result').each((i, element) => {
+        if (i >= 5) return false;
+        
+        const title = $(element).find('.result__title').text().trim();
+        const snippet = $(element).find('.result__snippet').text().trim();
+        const url = $(element).find('.result__url').attr('href');
+        
+        if (title && url) {
+          // Extract actual URL from DuckDuckGo redirect
+          let actualUrl = url;
+          try {
+            if (url.includes('uddg=')) {
+              const urlParams = new URLSearchParams(url.split('?')[1]);
+              actualUrl = decodeURIComponent(urlParams.get('uddg') || url);
+            }
+          } catch (e) {
+            actualUrl = url;
+          }
+          
+          results.push({ title, snippet, url: actualUrl });
+        }
+      });
+
+      if (results.length === 0) {
+        return 'No search results found. I will answer based on my training data.';
+      }
+
+      console.log(`[DuckDuckGo] Found ${results.length} results, scraping content...`);
+
+      let combinedContent = `🔍 WEB SEARCH RESULTS\n${'='.repeat(60)}\n\n`;
+      combinedContent += `Search Query: "${query}"\n`;
+      combinedContent += `Found ${results.length} relevant web pages\n\n`;
+
+      // Scrape content from top 3 results
+      const scrapePromises = results.slice(0, 3).map(async (result, i) => {
+        const scrapedContent = await this.scrapeWebPage(result.url);
+        return { result, scrapedContent, index: i };
+      });
+      
+      const scrapedResults = await Promise.all(scrapePromises);
+      
+      for (const { result, scrapedContent, index } of scrapedResults) {
+        combinedContent += `\n${'─'.repeat(60)}\n`;
+        combinedContent += `📄 RESULT ${index + 1}: ${result.title}\n`;
+        combinedContent += `${'─'.repeat(60)}\n\n`;
+        
+        if (scrapedContent) {
+          combinedContent += `${scrapedContent}\n\n`;
+        } else if (result.snippet) {
+          combinedContent += `${result.snippet}\n\n`;
+        }
+        
+        combinedContent += `🔗 Source: ${result.url}\n`;
+      }
+      
+      // Add remaining results with snippets only
+      for (let i = 3; i < results.length; i++) {
+        const result = results[i];
+        combinedContent += `\n${'─'.repeat(60)}\n`;
+        combinedContent += `📄 RESULT ${i + 1}: ${result.title}\n`;
+        combinedContent += `${'─'.repeat(60)}\n\n`;
+        combinedContent += `${result.snippet}\n\n`;
+        combinedContent += `🔗 Source: ${result.url}\n`;
+      }
+
+      combinedContent += `\n${'='.repeat(60)}\n`;
+
+      console.log(`[DuckDuckGo] Search complete with ${results.length} results`);
+      return combinedContent;
+    } catch (error) {
+      console.error('[DuckDuckGo] Error:', error.message);
+      return 'Unable to fetch search results. I will answer based on my training data.';
     }
   }
 
@@ -152,8 +327,8 @@ class WebSearchService {
       let searchResults = '';
       
       if (needsSearch) {
-        searchResults = await this.performWikipediaSearch(userMessage);
-        console.log('[WebSearchService] Wikipedia results obtained:', searchResults.length, 'chars');
+        searchResults = await this.performWebSearch(userMessage);
+        console.log('[WebSearchService] Web search results obtained:', searchResults.length, 'chars');
       }
 
       // Build conversation messages
@@ -177,7 +352,7 @@ class WebSearchService {
       // Add current query with search results if available
       if (searchResults) {
         messages.push(new HumanMessage(
-          `Question: ${userMessage}\n\n${searchResults}\n\nBased on the Wikipedia information provided above, please give me a comprehensive and well-organized answer to my question. Structure your response with clear paragraphs and include relevant details from the articles.`
+          `Question: ${userMessage}\n\n${searchResults}\n\nBased on the web search results provided above, please give me a comprehensive and well-organized answer to my question. Structure your response with clear paragraphs and include relevant details from the sources.`
         ));
       } else {
         messages.push(new HumanMessage(userMessage));
@@ -205,23 +380,34 @@ class WebSearchService {
    */
   async processQueryStream(userMessage, conversationHistory = [], onToken) {
     try {
+      // Send initial searching status
+      if (onToken) {
+        onToken('🔍 Searching the web...\n\n');
+      }
+      
       // ALWAYS search since this endpoint is only called when web search button is enabled
       const needsSearch = true;
       let searchResults = '';
       
-      searchResults = await this.performWikipediaSearch(userMessage);
-      console.log('[WebSearchService] Wikipedia search completed. Results length:', searchResults.length);
+      searchResults = await this.performWebSearch(userMessage);
+      console.log('[WebSearchService] Web search completed. Results length:', searchResults.length);
+      
+      // Send status update that search is complete
+      if (onToken) {
+        onToken('✓ Search complete. Analyzing results...\n\n');
+      }
 
       // Build conversation messages
       const messages = [
         new SystemMessage(
-          `You are a knowledgeable AI assistant with access to Wikipedia information. ` +
+          `You are a knowledgeable AI assistant with access to real-time web search results. ` +
           'Your responses should be:\n' +
-          '1. Accurate and based on the Wikipedia sources provided\n' +
+          '1. Accurate and based on the current web search results provided\n' +
           '2. Well-structured with clear sections or bullet points when appropriate\n' +
           '3. Comprehensive yet concise\n' +
-          '4. Include relevant facts, dates, and context from the Wikipedia articles\n' +
-          '5. Cite Wikipedia as your source when presenting information\n\n' +
+          '4. Include relevant facts, dates, and context from the search results\n' +
+          '5. Cite sources by mentioning website names or organizations when presenting information\n' +
+          '6. Provide up-to-date information based on the search results\n\n' +
           'Format your response in a user-friendly way with proper paragraphs and organization.'
         ),
       ];
@@ -238,7 +424,7 @@ class WebSearchService {
       // Add current query with search results if available
       if (searchResults) {
         messages.push(new HumanMessage(
-          `Question: ${userMessage}\n\n${searchResults}\n\nBased on the Wikipedia information provided above, please give me a comprehensive and well-organized answer to my question. Structure your response with clear paragraphs and include relevant details from the articles.`
+          `Question: ${userMessage}\n\n${searchResults}\n\nBased on the web search results provided above, please give me a comprehensive and well-organized answer to my question. Structure your response with clear paragraphs and include relevant details from the sources.`
         ));
       } else {
         messages.push(new HumanMessage(userMessage));
