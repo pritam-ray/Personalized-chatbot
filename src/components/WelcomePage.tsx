@@ -39,7 +39,7 @@ export function WelcomePage({ onNewChat, userName }: WelcomePageProps) {
               <MessageSquare className="h-9 w-9 text-white" />
             </div>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-bold text-[var(--text-primary)]">
+          <h1 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)]">
             {userName ? `Welcome back, ${userName}!` : 'What\'s on your mind today?'}
           </h1>
           <p className="text-lg text-[var(--text-secondary)]">
