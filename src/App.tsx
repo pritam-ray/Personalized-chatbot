@@ -388,11 +388,6 @@ function App() {
   };
 
   const handleDeleteConversation = async (conversationId: string) => {
-    const confirmDelete = window.confirm('Delete this conversation?');
-    if (!confirmDelete) {
-      return;
-    }
-
     // Delete from database
     try {
       await api.deleteConversation(conversationId);
