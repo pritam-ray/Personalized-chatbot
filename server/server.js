@@ -419,6 +419,8 @@ app.post('/api/chat/search/stream', authenticateToken, async (req, res) => {
   try {
     const { message, conversationId } = req.body;
     
+    console.log('[WebSearch Stream] Request received:', { message, conversationId });
+    
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
@@ -441,8 +443,11 @@ app.post('/api/chat/search/stream', authenticateToken, async (req, res) => {
         [conversationId, req.user.id]
       );
       conversationHistory = messages;
+      console.log('[WebSearch Stream] Loaded conversation history:', conversationHistory.length, 'messages');
     }
 
+    console.log('[WebSearch Stream] Starting stream...');
+    
     // Stream tokens
     const result = await webSearchService.processQueryStream(
       message,
@@ -452,6 +457,8 @@ app.post('/api/chat/search/stream', authenticateToken, async (req, res) => {
       }
     );
 
+    console.log('[WebSearch Stream] Stream complete. Used search:', result.usedWebSearch);
+
     // Send final result
     res.write(`data: ${JSON.stringify({ 
       done: true, 
@@ -460,7 +467,7 @@ app.post('/api/chat/search/stream', authenticateToken, async (req, res) => {
     res.end();
 
   } catch (error) {
-    console.error('Error in streaming web search:', error);
+    console.error('[WebSearch Stream] Error:', error);
     res.write(`data: ${JSON.stringify({ 
       error: 'Failed to process web search',
       done: true 

@@ -9,10 +9,34 @@ const cheerio = require('cheerio');
  */
 class WebSearchService {
   constructor(azureConfig) {
+    // Validate configuration
+    if (!azureConfig.apiKey || !azureConfig.endpoint || !azureConfig.deploymentName) {
+      throw new Error('Missing Azure OpenAI configuration: apiKey, endpoint, and deploymentName are required');
+    }
+    
+    // Extract the instance name from the endpoint URL
+    // Endpoint format: https://{instance}.openai.azure.com
+    const endpoint = azureConfig.endpoint;
+    let instanceName = '';
+    
+    try {
+      const url = new URL(endpoint);
+      instanceName = url.hostname.split('.')[0]; // Extract {instance} from {instance}.openai.azure.com
+    } catch (error) {
+      console.error('[WebSearchService] Invalid endpoint URL:', endpoint);
+      throw new Error('Invalid Azure OpenAI endpoint URL');
+    }
+    
+    console.log('[WebSearchService] Initializing with:', {
+      instanceName,
+      deploymentName: azureConfig.deploymentName,
+      apiVersion: azureConfig.apiVersion,
+    });
+    
     this.model = new ChatOpenAI({
       azureOpenAIApiKey: azureConfig.apiKey,
       azureOpenAIApiVersion: azureConfig.apiVersion,
-      azureOpenAIBasePath: azureConfig.endpoint,
+      azureOpenAIApiInstanceName: instanceName,
       azureOpenAIApiDeploymentName: azureConfig.deploymentName,
       temperature: 0.7,
       streaming: true,
@@ -189,6 +213,7 @@ class WebSearchService {
 
       const stream = await this.model.stream(messages);
 
+      console.log('[WebSearchService] Stream created, processing chunks...');
       let fullResponse = '';
       for await (const chunk of stream) {
         const content = chunk.content;
@@ -200,13 +225,15 @@ class WebSearchService {
         }
       }
 
+      console.log('[WebSearchService] Stream complete. Response length:', fullResponse.length);
       return {
         success: true,
         response: fullResponse,
         usedWebSearch: needsSearch && searchResults.length > 0,
       };
     } catch (error) {
-      console.error('[WebSearch] Streaming error:', error);
+      console.error('[WebSearchService] Streaming error:', error);
+      console.error('[WebSearchService] Error details:', error.message);
       return {
         success: false,
         error: error.message,
