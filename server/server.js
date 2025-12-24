@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 4000;
 const webSearchService = new WebSearchService({
   apiKey: process.env.AZURE_OPENAI_API_KEY,
   apiVersion: process.env.AZURE_OPENAI_API_VERSION,
-  instanceName: process.env.AZURE_OPENAI_INSTANCE_NAME,
+  endpoint: process.env.AZURE_OPENAI_ENDPOINT,
   deploymentName: process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
 });
 

@@ -12,7 +12,7 @@ class WebSearchService {
     this.model = new ChatOpenAI({
       azureOpenAIApiKey: azureConfig.apiKey,
       azureOpenAIApiVersion: azureConfig.apiVersion,
-      azureOpenAIApiInstanceName: azureConfig.instanceName,
+      azureOpenAIBasePath: azureConfig.endpoint,
       azureOpenAIApiDeploymentName: azureConfig.deploymentName,
       temperature: 0.7,
       streaming: true,
