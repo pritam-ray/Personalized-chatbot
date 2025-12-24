@@ -7,9 +7,18 @@ require('dotenv').config();
 const { authenticateToken, optionalAuth } = require('./middleware/auth');
 const createAuthRoutes = require('./routes/auth');
 const { testEmailConnection } = require('./services/emailService');
+const WebSearchService = require('./services/webSearchService');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Initialize Web Search Service
+const webSearchService = new WebSearchService({
+  apiKey: process.env.AZURE_OPENAI_API_KEY,
+  apiVersion: process.env.AZURE_OPENAI_API_VERSION,
+  instanceName: process.env.AZURE_OPENAI_INSTANCE_NAME,
+  deploymentName: process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
+});
 
 // Middleware
 app.use(cors({
@@ -354,6 +363,109 @@ app.get('/api/conversations/:id/session', authenticateToken, async (req, res) =>
   } catch (error) {
     console.error('Error fetching Azure session:', error);
     res.status(500).json({ error: 'Failed to fetch Azure session' });
+  }
+});
+
+// ========================================
+// Web Search Endpoint
+// ========================================
+
+// Process message with web search capability
+app.post('/api/chat/search', authenticateToken, async (req, res) => {
+  try {
+    const { message, conversationId } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Get conversation history if conversationId provided
+    let conversationHistory = [];
+    if (conversationId) {
+      const [messages] = await pool.query(
+        `SELECT m.role, m.content 
+         FROM messages m
+         JOIN conversations c ON m.conversation_id = c.id
+         WHERE c.id = ? AND c.user_id = ?
+         ORDER BY m.created_at ASC
+         LIMIT 10`,
+        [conversationId, req.user.id]
+      );
+      conversationHistory = messages;
+    }
+
+    // Process with web search
+    const result = await webSearchService.processQuery(message, conversationHistory);
+
+    res.json({
+      success: result.success,
+      response: result.response,
+      usedWebSearch: result.usedWebSearch,
+      error: result.error,
+    });
+
+  } catch (error) {
+    console.error('Error in web search:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to process web search',
+      response: 'I apologize, but I encountered an error while searching the web.'
+    });
+  }
+});
+
+// Stream chat response with web search
+app.post('/api/chat/search/stream', authenticateToken, async (req, res) => {
+  try {
+    const { message, conversationId } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Set headers for SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Get conversation history
+    let conversationHistory = [];
+    if (conversationId) {
+      const [messages] = await pool.query(
+        `SELECT m.role, m.content 
+         FROM messages m
+         JOIN conversations c ON m.conversation_id = c.id
+         WHERE c.id = ? AND c.user_id = ?
+         ORDER BY m.created_at ASC
+         LIMIT 10`,
+        [conversationId, req.user.id]
+      );
+      conversationHistory = messages;
+    }
+
+    // Stream tokens
+    const result = await webSearchService.processQueryStream(
+      message,
+      conversationHistory,
+      (token) => {
+        res.write(`data: ${JSON.stringify({ token })}\n\n`);
+      }
+    );
+
+    // Send final result
+    res.write(`data: ${JSON.stringify({ 
+      done: true, 
+      usedWebSearch: result.usedWebSearch 
+    })}\n\n`);
+    res.end();
+
+  } catch (error) {
+    console.error('Error in streaming web search:', error);
+    res.write(`data: ${JSON.stringify({ 
+      error: 'Failed to process web search',
+      done: true 
+    })}\n\n`);
+    res.end();
   }
 });
 

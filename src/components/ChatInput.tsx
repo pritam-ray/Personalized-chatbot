@@ -1,14 +1,16 @@
 import { useState, useRef } from 'react';
-import { Send, Paperclip, X, Square } from 'lucide-react';
+import { Send, Paperclip, X, Square, Globe } from 'lucide-react';
 import { Attachment } from '../services/azureOpenAI';
 
 interface ChatInputProps {
-  onSend: (message: string, displayMessage?: string, fileName?: string, attachments?: Attachment[]) => void;
+  onSend: (message: string, displayMessage?: string, fileName?: string, attachments?: Attachment[], useWebSearch?: boolean) => void;
   isGenerating: boolean;
   onStop: () => void;
+  webSearchEnabled?: boolean;
+  onWebSearchToggle?: (enabled: boolean) => void;
 }
 
-export function ChatInput({ onSend, isGenerating, onStop }: ChatInputProps) {
+export function ChatInput({ onSend, isGenerating, onStop, webSearchEnabled = false, onWebSearchToggle }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -89,7 +91,7 @@ export function ChatInput({ onSend, isGenerating, onStop }: ChatInputProps) {
         : `${icon} ${label} attached: ${attachment.fileName}`;
     }
 
-    onSend(trimmedInput, displayContent, attachedFile?.name, attachments.length ? attachments : undefined);
+    onSend(trimmedInput, displayContent, attachedFile?.name, attachments.length ? attachments : undefined, webSearchEnabled);
     setInput('');
     handleRemoveFile();
   };
@@ -139,6 +141,23 @@ export function ChatInput({ onSend, isGenerating, onStop }: ChatInputProps) {
           >
             <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
           </button>
+
+          {onWebSearchToggle && (
+            <button
+              type="button"
+              onClick={() => onWebSearchToggle(!webSearchEnabled)}
+              disabled={isGenerating}
+              className={`flex h-10 w-10 sm:h-11 sm:w-11 flex-shrink-0 items-center justify-center rounded-xl border transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                webSearchEnabled 
+                  ? 'border-[var(--accent)] bg-[var(--accent)] text-white' 
+                  : 'border-[var(--border-subtle)] bg-[var(--bg-control)] text-[var(--text-primary)] hover:bg-[var(--bg-control-hover)]'
+              }`}
+              title={webSearchEnabled ? "Web search enabled" : "Enable web search"}
+              aria-label="Toggle web search"
+            >
+              <Globe className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+            </button>
+          )}
 
           <input
             ref={fileInputRef}

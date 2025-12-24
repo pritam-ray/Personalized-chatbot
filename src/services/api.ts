@@ -166,3 +166,80 @@ export async function getAzureSession(conversationId: string): Promise<any> {
   }
   return response.json();
 }
+
+// Web Search API
+export async function searchWeb(message: string, conversationId?: string): Promise<{
+  success: boolean;
+  response: string;
+  usedWebSearch: boolean;
+  error?: string;
+}> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/chat/search`, {
+    method: 'POST',
+    body: JSON.stringify({ message, conversationId })
+  });
+  if (!response.ok) throw new Error('Web search failed');
+  return response.json();
+}
+
+export async function searchWebStream(
+  message: string,
+  conversationId: string | undefined,
+  onToken: (token: string) => void,
+  onComplete: (usedWebSearch: boolean) => void,
+  onError: (error: string) => void
+): Promise<void> {
+  try {
+    const response = await fetchWithAuth(`${API_BASE_URL}/chat/search/stream`, {
+      method: 'POST',
+      body: JSON.stringify({ message, conversationId })
+    });
+
+    if (!response.ok) {
+      throw new Error('Web search stream failed');
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.error) {
+              onError(data.error);
+              return;
+            }
+            
+            if (data.token) {
+              onToken(data.token);
+            }
+            
+            if (data.done) {
+              onComplete(data.usedWebSearch || false);
+              return;
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    onError(error instanceof Error ? error.message : 'Unknown error');
+  }
+}

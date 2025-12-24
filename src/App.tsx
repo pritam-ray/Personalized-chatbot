@@ -160,6 +160,7 @@ function App() {
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | undefined>(undefined);
   const [searchQueryForHighlight, setSearchQueryForHighlight] = useState<string | undefined>(undefined);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastScrollTime = useRef<number>(0);
@@ -746,6 +747,7 @@ function App() {
     displayContent?: string,
     _fileName?: string,
     attachments?: Attachment[],
+    useWebSearch?: boolean,
   ) => {
     // If no active conversation, create one first
     if (!activeConversation) {
@@ -767,7 +769,7 @@ function App() {
       
       // Wait a bit for state to update, then send the message
       setTimeout(() => {
-        handleSendMessage(content, displayContent, _fileName, attachments);
+        handleSendMessage(content, displayContent, _fileName, attachments, useWebSearch);
       }, 100);
       return;
     }
@@ -833,6 +835,78 @@ function App() {
         messages: [...updatedMessages, assistantMessage],
         updatedAt: Date.now(),
       }));
+
+      // Use Web Search if enabled
+      if (useWebSearch) {
+        console.log('[App] Using Web Search with LangChain');
+        try {
+          await api.searchWebStream(
+            content,
+            conversationId,
+            (token: string) => {
+              // Check if generation was stopped
+              if (controller.signal.aborted) {
+                return;
+              }
+
+              assistantMessage.content += token;
+              updateConversationById(conversationId, (conversation) => ({
+                ...conversation,
+                messages: [...updatedMessages, { ...assistantMessage }],
+                updatedAt: Date.now(),
+              }));
+              scrollToBottom();
+            },
+            async (usedWebSearch: boolean) => {
+              // Streaming complete
+              console.log('[App] Web search streaming complete. Used search:', usedWebSearch);
+              
+              // Save assistant message to database
+              try {
+                await api.addMessage(
+                  conversationId,
+                  'assistant',
+                  assistantMessage.content
+                );
+              } catch (error) {
+                console.error('[App] Failed to save assistant message:', error);
+              }
+
+              // Generate title if first message
+              if (isFirstMessage && assistantMessage.content) {
+                try {
+                  const title = await generateTitleFromResponse(content, assistantMessage.content);
+                  await api.updateConversationTitle(conversationId, title);
+                  updateConversationById(conversationId, (conversation) => ({
+                    ...conversation,
+                    title,
+                  }));
+                } catch (error) {
+                  console.error('[App] Failed to generate title:', error);
+                }
+              }
+
+              setIsLoading(false);
+              setAbortController(null);
+            },
+            (error: string) => {
+              console.error('[App] Web search error:', error);
+              assistantMessage.content = 'I apologize, but I encountered an error while searching the web. Please try again.';
+              updateConversationById(conversationId, (conversation) => ({
+                ...conversation,
+                messages: [...updatedMessages, { ...assistantMessage }],
+                updatedAt: Date.now(),
+              }));
+              setIsLoading(false);
+              setAbortController(null);
+            }
+          );
+          return; // Exit early since web search handles the response
+        } catch (error) {
+          console.error('[App] Web search failed:', error);
+          // Fall through to regular Azure OpenAI if web search fails
+        }
+      }
 
       // Primary: Use Azure Response API (supports text, images, PDFs with stateful context)
       if (azureResponseAPI.isConfigured()) {
@@ -1277,7 +1351,13 @@ function App() {
           </div>
         </main>
 
-        <ChatInput onSend={handleSendMessage} isGenerating={isLoading} onStop={handleStopGeneration} />
+        <ChatInput 
+          onSend={handleSendMessage} 
+          isGenerating={isLoading} 
+          onStop={handleStopGeneration}
+          webSearchEnabled={webSearchEnabled}
+          onWebSearchToggle={setWebSearchEnabled}
+        />
       </div>
     </div>
   );
