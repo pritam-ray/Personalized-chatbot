@@ -154,49 +154,49 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)]">
-      <div className="flex-1 flex flex-col w-full px-4 sm:px-6">
+      <div className="flex-1 flex flex-col w-full px-3 sm:px-4 md:px-6">
         {/* Header */}
-        <div className="sticky top-0 bg-[var(--bg-app)] border-b border-[var(--border-subtle)] py-6 flex items-center gap-4 z-10">
+        <div className="sticky top-0 bg-[var(--bg-app)] border-b border-[var(--border-subtle)] py-4 sm:py-6 flex items-center gap-3 sm:gap-4 z-10">
           <button
             onClick={onBack}
-            className="p-2 rounded-lg hover:bg-[var(--bg-hover)] transition"
+            className="p-2 rounded-lg hover:bg-[var(--bg-hover)] transition flex-shrink-0"
           >
             <ArrowLeft className="h-5 w-5 text-[var(--text-secondary)]" />
           </button>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-[var(--accent-muted-bg)] flex items-center justify-center">
-              <User className="h-6 w-6 text-[var(--accent)]" />
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[var(--accent-muted-bg)] flex items-center justify-center flex-shrink-0">
+              <User className="h-5 w-5 sm:h-6 sm:w-6 text-[var(--accent)]" />
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-[var(--text-primary)]">Profile Settings</h2>
-              <p className="text-sm text-[var(--text-secondary)]">Manage your account information</p>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-2xl font-bold text-[var(--text-primary)] truncate">Profile Settings</h2>
+              <p className="text-xs sm:text-sm text-[var(--text-secondary)] truncate">Manage your account information</p>
             </div>
           </div>
         </div>
         
         <div className="flex-1 overflow-y-auto">
 
-        <div className="py-6 space-y-6">
+        <div className="py-4 sm:py-6 space-y-4 sm:space-y-6">
           {/* Message */}
           {message && (
-            <div className={`rounded-lg px-4 py-3 flex items-center gap-2 ${
+            <div className={`rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 ${
               message.type === 'success' 
                 ? 'bg-green-500/10 border border-green-500/50 text-green-500' 
                 : 'bg-red-500/10 border border-red-500/50 text-red-500'
             }`}>
-              {message.type === 'success' ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-              <span className="text-sm font-medium">{message.text}</span>
+              {message.type === 'success' ? <Check className="h-4 w-4 sm:h-5 sm:w-5" /> : <X className="h-4 w-4 sm:h-5 sm:w-5" />}
+              <span className="text-xs sm:text-sm font-medium">{message.text}</span>
             </div>
           )}
 
           {/* Profile Information */}
-          <div className="bg-[var(--bg-control)] rounded-xl p-6 border border-[var(--border-subtle)]">
+          <div className="bg-[var(--bg-control)] rounded-xl p-4 sm:p-6 border border-[var(--border-subtle)]">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Profile Information</h3>
+              <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)]">Profile Information</h3>
               {!isEditing && (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent)]/90 transition text-sm font-medium"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent)]/90 transition text-xs sm:text-sm font-medium"
                 >
                   Edit Profile
                 </button>

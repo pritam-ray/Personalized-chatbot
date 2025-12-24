@@ -52,17 +52,17 @@ export function SignupPage({ onSwitchToLogin }: SignupPageProps) {
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)] px-4 py-8">
       <div className="w-full max-w-md">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--accent-muted-bg)] border-2 border-[var(--accent)] mb-4">
-            <UserPlus className="h-8 w-8 text-[var(--accent)]" />
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[var(--accent-muted-bg)] border-2 border-[var(--accent)] mb-3 sm:mb-4">
+            <UserPlus className="h-7 w-7 sm:h-8 sm:w-8 text-[var(--accent)]" />
           </div>
-          <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-2">Create Account</h1>
-          <p className="text-[var(--text-secondary)]">Start your AI conversation journey</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)] mb-2">Create Account</h1>
+          <p className="text-sm sm:text-base text-[var(--text-secondary)]">Start your AI conversation journey</p>
         </div>
 
         {/* Signup Form */}
-        <div className="bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-strong)] p-8 shadow-xl">
-          <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-strong)] p-5 sm:p-8 shadow-xl">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             {/* Error Message */}
             {error && (
               <div className="bg-red-500/10 border border-red-500/50 rounded-lg px-4 py-3 text-red-500 text-sm">
