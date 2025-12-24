@@ -1,10 +1,7 @@
 const { ChatOpenAI } = require('@langchain/openai');
-const { DynamicStructuredTool } = require('@langchain/core/tools');
-const { ChatPromptTemplate } = require('@langchain/core/prompts');
-const { AgentExecutor, createOpenAIToolsAgent } = require('langchain/agents');
+const { HumanMessage, SystemMessage, AIMessage } = require('@langchain/core/messages');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { z } = require('zod');
 
 /**
  * Web Search Tool using DuckDuckGo (no API key needed)
@@ -19,17 +16,6 @@ class WebSearchService {
       azureOpenAIApiDeploymentName: azureConfig.deploymentName,
       temperature: 0.7,
       streaming: true,
-    });
-
-    this.searchTool = new DynamicStructuredTool({
-      name: 'web_search',
-      description: 'Search the web for current information, news, facts, or any topic. Use this when you need up-to-date information or when the user asks about current events, recent news, or topics you don\'t have information about.',
-      schema: z.object({
-        query: z.string().describe('The search query to look up on the web'),
-      }),
-      func: async ({ query }) => {
-        return await this.performWebSearch(query);
-      },
     });
   }
 
@@ -91,33 +77,17 @@ class WebSearchService {
   }
 
   /**
-   * Create an agent that can use web search
+   * Determine if web search is needed for the query
    */
-  async createAgent() {
-    const tools = [this.searchTool];
-
-    const prompt = ChatPromptTemplate.fromMessages([
-      ['system', `You are a helpful AI assistant with access to web search. 
-When users ask about current events, recent information, or topics you're not sure about, use the web_search tool to find accurate information.
-After getting search results, synthesize the information and provide a clear, concise answer with sources.
-Always cite your sources when using web search results.`],
-      ['placeholder', '{chat_history}'],
-      ['human', '{input}'],
-      ['placeholder', '{agent_scratchpad}'],
-    ]);
-
-    const agent = await createOpenAIToolsAgent({
-      llm: this.model,
-      tools,
-      prompt,
-    });
-
-    return new AgentExecutor({
-      agent,
-      tools,
-      verbose: true,
-      maxIterations: 3,
-    });
+  async shouldUseWebSearch(userMessage) {
+    // Keywords that suggest current information is needed
+    const currentInfoKeywords = [
+      'latest', 'recent', 'current', 'today', 'now', 'news',
+      'weather', 'price', 'stock', 'update', 'happening'
+    ];
+    
+    const lowerMessage = userMessage.toLowerCase();
+    return currentInfoKeywords.some(keyword => lowerMessage.includes(keyword));
   }
 
   /**
@@ -125,27 +95,50 @@ Always cite your sources when using web search results.`],
    */
   async processQuery(userMessage, conversationHistory = []) {
     try {
-      const agentExecutor = await this.createAgent();
+      // Check if web search is needed
+      const needsSearch = await this.shouldUseWebSearch(userMessage);
+      let searchResults = '';
       
-      // Format conversation history for the agent
-      const chatHistory = conversationHistory.map(msg => {
-        return msg.role === 'user' 
-          ? `Human: ${msg.content}`
-          : `Assistant: ${msg.content}`;
-      }).join('\n');
+      if (needsSearch) {
+        searchResults = await this.performWebSearch(userMessage);
+      }
 
-      const result = await agentExecutor.invoke({
-        input: userMessage,
-        chat_history: chatHistory,
+      // Build conversation messages
+      const messages = [
+        new SystemMessage(
+          `You are a helpful AI assistant${needsSearch ? ' with access to current web search results' : ''}. ` +
+          'Provide clear, accurate, and helpful responses. ' +
+          (needsSearch ? 'When using web search results, cite your sources by mentioning the information came from web search.' : '')
+        ),
+      ];
+
+      // Add conversation history
+      conversationHistory.forEach(msg => {
+        if (msg.role === 'user') {
+          messages.push(new HumanMessage(msg.content));
+        } else if (msg.role === 'assistant') {
+          messages.push(new AIMessage(msg.content));
+        }
       });
+
+      // Add current query with search results if available
+      if (searchResults) {
+        messages.push(new HumanMessage(
+          `${userMessage}\n\n[Web Search Results]:\n${searchResults}\n\nPlease provide an answer based on these search results.`
+        ));
+      } else {
+        messages.push(new HumanMessage(userMessage));
+      }
+
+      const response = await this.model.invoke(messages);
 
       return {
         success: true,
-        response: result.output,
-        usedWebSearch: result.intermediateSteps && result.intermediateSteps.length > 0,
+        response: response.content,
+        usedWebSearch: needsSearch && searchResults.length > 0,
       };
     } catch (error) {
-      console.error('[WebSearch] Agent error:', error);
+      console.error('[WebSearch] Error:', error);
       return {
         success: false,
         error: error.message,
@@ -159,35 +152,50 @@ Always cite your sources when using web search results.`],
    */
   async processQueryStream(userMessage, conversationHistory = [], onToken) {
     try {
-      const agentExecutor = await this.createAgent();
+      // Check if web search is needed
+      const needsSearch = await this.shouldUseWebSearch(userMessage);
+      let searchResults = '';
       
-      // Format conversation history
-      const chatHistory = conversationHistory.map(msg => {
-        return msg.role === 'user' 
-          ? `Human: ${msg.content}`
-          : `Assistant: ${msg.content}`;
-      }).join('\n');
+      if (needsSearch) {
+        searchResults = await this.performWebSearch(userMessage);
+      }
 
-      const stream = await agentExecutor.stream({
-        input: userMessage,
-        chat_history: chatHistory,
+      // Build conversation messages
+      const messages = [
+        new SystemMessage(
+          `You are a helpful AI assistant${needsSearch ? ' with access to current web search results' : ''}. ` +
+          'Provide clear, accurate, and helpful responses. ' +
+          (needsSearch ? 'When using web search results, cite your sources by mentioning the information came from web search.' : '')
+        ),
+      ];
+
+      // Add conversation history
+      conversationHistory.forEach(msg => {
+        if (msg.role === 'user') {
+          messages.push(new HumanMessage(msg.content));
+        } else if (msg.role === 'assistant') {
+          messages.push(new AIMessage(msg.content));
+        }
       });
 
-      let fullResponse = '';
-      let usedWebSearch = false;
+      // Add current query with search results if available
+      if (searchResults) {
+        messages.push(new HumanMessage(
+          `${userMessage}\n\n[Web Search Results]:\n${searchResults}\n\nPlease provide an answer based on these search results.`
+        ));
+      } else {
+        messages.push(new HumanMessage(userMessage));
+      }
 
+      const stream = await this.model.stream(messages);
+
+      let fullResponse = '';
       for await (const chunk of stream) {
-        if (chunk.intermediateSteps) {
-          usedWebSearch = true;
-        }
-        
-        if (chunk.output) {
-          // Stream the final output
-          for (const char of chunk.output) {
-            fullResponse += char;
-            if (onToken) {
-              onToken(char);
-            }
+        const content = chunk.content;
+        if (content) {
+          fullResponse += content;
+          if (onToken) {
+            onToken(content);
           }
         }
       }
@@ -195,7 +203,7 @@ Always cite your sources when using web search results.`],
       return {
         success: true,
         response: fullResponse,
-        usedWebSearch,
+        usedWebSearch: needsSearch && searchResults.length > 0,
       };
     } catch (error) {
       console.error('[WebSearch] Streaming error:', error);
